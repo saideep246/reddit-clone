@@ -17,6 +17,7 @@ export function PostDetail() {
   const { communityName = '', postId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const sort = (searchParams.get('commentSort') as CommentSortType) || 'best';
+
   const { user } = useAuth();
   const [editingPost, setEditingPost] = useState(false);
 
@@ -41,6 +42,7 @@ export function PostDetail() {
   if (loading) {
     return <div className={styles.state}>Loading…</div>;
   }
+
   if (error || !post) {
     return <div className={styles.state}>{error ?? 'Post not found.'}</div>;
   }
@@ -48,29 +50,50 @@ export function PostDetail() {
   return (
     <div>
       <article className={styles.header}>
-        <VoteControl score={post.score} myVote={post.myVote} onVote={applyPostVote} />
+        <VoteControl
+          score={post.score}
+          myVote={post.myVote}
+          onVote={applyPostVote}
+        />
+
         <div className={styles.body}>
           <div className={styles.meta}>
             Posted by{' '}
             {post.authorUsername ? (
-              <Link className={styles.communityLink} to={`/user/${post.authorUsername}`}>
+              <Link
+                className={styles.communityLink}
+                to={`/user/${post.authorUsername}`}
+              >
                 u/{post.authorUsername}
               </Link>
             ) : (
               'u/[deleted]'
             )}{' '}
             in{' '}
-            <Link className={styles.communityLink} to={`/r/${post.communityName}`}>
+            <Link
+              className={styles.communityLink}
+              to={`/r/${post.communityName}`}
+            >
               r/{post.communityName ?? 'unknown'}
             </Link>{' '}
             · {timeAgo(post.createdAt)}
             {post.editedAt && !post.deleted && <> · edited</>}
           </div>
+
           <h1 className={styles.title}>
             {decodeHtmlEntities(post.title)}
-            {post.nsfw && <span className={`${styles.badge} ${styles.badgeNsfw}`}>NSFW</span>}
-            {post.spoiler && <span className={`${styles.badge} ${styles.badgeSpoiler}`}>Spoiler</span>}
+            {post.nsfw && (
+              <span className={`${styles.badge} ${styles.badgeNsfw}`}>
+                NSFW
+              </span>
+            )}
+            {post.spoiler && (
+              <span className={`${styles.badge} ${styles.badgeSpoiler}`}>
+                Spoiler
+              </span>
+            )}
           </h1>
+
           {!post.deleted &&
             (editingPost ? (
               <ReplyBox
@@ -86,7 +109,11 @@ export function PostDetail() {
             ) : (
               <PostMedia post={post} fullBody />
             ))}
-          <div className={styles.footer}>{post.commentCount} comments</div>
+
+          <div className={styles.footer}>
+            {post.commentCount} comments
+          </div>
+
           {user && !editingPost && (
             <OwnContentActions
               viewerId={user.id}
@@ -103,7 +130,11 @@ export function PostDetail() {
 
       <div className={styles.commentsSection}>
         <CommentSortDropdown />
-        {!post.deleted && <ReplyBox onSubmit={(body) => submitComment(null, body)} />}
+
+        {!post.deleted && (
+          <ReplyBox onSubmit={(body) => submitComment(null, body)} />
+        )}
+
         {comments.length === 0 ? (
           <p>No comments yet. Be the first to share what you think!</p>
         ) : (
@@ -120,8 +151,14 @@ export function PostDetail() {
             />
           ))
         )}
+
         {hasMoreComments && (
-          <button type="button" className={styles.loadMoreComments} disabled={loadingMoreComments} onClick={loadMoreComments}>
+          <button
+            type="button"
+            className={styles.loadMoreComments}
+            disabled={loadingMoreComments}
+            onClick={loadMoreComments}
+          >
             {loadingMoreComments ? 'Loading…' : 'Load more comments'}
           </button>
         )}

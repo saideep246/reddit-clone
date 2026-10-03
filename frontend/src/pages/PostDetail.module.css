@@ -97,3 +97,24 @@
   color: var(--color-text-secondary);
   cursor: default;
 }
+
+.deleteButton {
+  margin-left: var(--space-3);
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.deleteButton:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.deleteError {
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--color-primary);
+}

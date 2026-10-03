@@ -97,6 +97,12 @@ public class ModerationController {
         moderation.removeContent(userId, communityId(name), targetType, targetId, req == null ? null : req.reason());
     }
 
+    // Author, moderator or owner deletes a post (soft removal) — see ModerationService.deletePost.
+    @DeleteMapping("/r/{name}/posts/{postId}")
+    public void deletePost(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID postId) {
+        moderation.deletePost(userId, communityId(name), postId);
+    }
+
     // F8's Bans tab (first-ever consumer — until now a moderator could issue/lift a ban but never see the
     // current list at all).
     @GetMapping("/r/{name}/mod/bans")
