@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verifies DELETE /r/{name}/posts/{postId}: the author, a moderator holding PERM_REMOVE_CONTENT, and the
 # community owner can delete (soft-remove) a post; a plain member, a moderator without the bit, an
-# anonymous caller and a wrong-community URL cannot. Deleted posts disappear from /new and the detail
-# page; a repeat delete is idempotent. Needs the app on $BASE with RATE_LIMIT_REGISTER_CAPACITY raised.
+# anonymous caller and a wrong-community URL cannot. Deleted posts disappear from /new and become wiped
+# tombstones on the detail page; a repeat delete is idempotent. Needs the app on $BASE with RATE_LIMIT_REGISTER_CAPACITY raised.
 set -uo pipefail
 BASE="${BASE:-http://localhost:8081}"
 PASSWORD="Sup3rSecret!1"
@@ -53,7 +53,10 @@ req DELETE "/r/$C/posts/$P2" "" -H "$(auth "$MOD")"; check "moderator deletes so
 req DELETE "/r/$C/posts/$P3" "" -H "$(auth "$OWNER")"; check "owner deletes someone else's post" 200 "$HTTP_STATUS"
 req DELETE "/r/$C/posts/$P1" "" -H "$(auth "$AUTHOR")"; check "repeat delete is idempotent" 200 "$HTTP_STATUS"
 
-for p in "$P1" "$P2" "$P3"; do req GET "/r/$C/comments/$p" ""; check "deleted post detail is 404" 404 "$HTTP_STATUS"; done
+for p in "$P1" "$P2" "$P3"; do
+  req GET "/r/$C/comments/$p" ""
+  check "deleted post detail is a wiped tombstone" "200|true|[deleted]|" "$HTTP_STATUS|$(echo "$HTTP_BODY" | jq -r '[.post.deleted, .post.title, .post.body] | join("|")')"
+done
 req GET "/r/$C/new" ""
 check "/new lists only the surviving post" "$P4" "$(echo "$HTTP_BODY" | jq -r '[.data.children[].data.id] | join(",")')"
 

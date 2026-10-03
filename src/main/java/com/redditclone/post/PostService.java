@@ -2,6 +2,7 @@ package com.redditclone.post;
 
 import com.redditclone.auth.AuthService;
 import com.redditclone.common.KarmaEvent;
+import com.redditclone.common.ModerationAuditWriter;
 import com.redditclone.common.RankFormulas;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.VoteDelta;
@@ -9,6 +10,7 @@ import com.redditclone.common.exception.BadRequestException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.common.text.Sanitizer;
+import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
 import com.redditclone.media.Media;
@@ -48,11 +50,13 @@ public class PostService {
     private final CommunityService communityService;
     private final AuthService authService;
     private final MediaService mediaService;
+    private final ModerationAuditWriter auditWriter;
     private final int maxPinnedPosts;
 
     public PostService(PostRepository posts, PostMediaRepository postMedia, UuidV7Generator ids,
                         StringRedisTemplate redis, Sanitizer sanitizer, NamedParameterJdbcTemplate jdbc,
                         CommunityService communityService, AuthService authService, MediaService mediaService,
+                        ModerationAuditWriter auditWriter,
                         @Value("${app.moderation.max-pinned-posts}") int maxPinnedPosts) {
         this.posts = posts;
         this.postMedia = postMedia;
@@ -63,6 +67,7 @@ public class PostService {
         this.communityService = communityService;
         this.authService = authService;
         this.mediaService = mediaService;
+        this.auditWriter = auditWriter;
         this.maxPinnedPosts = maxPinnedPosts;
     }
 
@@ -240,7 +245,20 @@ public class PostService {
     // original title, body and media until it expires, and deleted media objects stay at their public URLs.
     @Transactional
     public void delete(UUID actorId, UUID communityId, UUID postId) {
-        Post p = requireAuthoredPost(actorId, communityId, postId);
+        Post p = findById(postId);
+        if (!p.getCommunityId().equals(communityId)) {
+            throw new NotFoundException("post not found");
+        }
+        boolean isAuthor = p.getAuthorId().equals(actorId);
+        if (isAuthor) {
+            // Moderator removal is final for the author — same rule as requireAuthoredPost.
+            if (p.isRemoved()) {
+                throw new ForbiddenException("this post has been removed by moderators");
+            }
+        } else {
+            // Moderators/owner (the owner's bitmask covers every bit) may delete anyone's post.
+            communityService.requirePermission(actorId, communityId, CommunityModerator.PERM_REMOVE_CONTENT);
+        }
         if (p.isDeleted()) {
             return;
         }
@@ -253,6 +271,11 @@ public class PostService {
         p.setPinned(false);
         posts.save(p);
         postMedia.deleteByPostId(postId);
+        if (!isAuthor) {
+            auditWriter.logAction(communityId, actorId, "remove_post", "post", postId, null);
+        }
+        jdbc.update("DELETE FROM mod_queue WHERE community_id = :c AND target_type = 'post' AND target_id = :t",
+                new MapSqlParameterSource().addValue("c", communityId).addValue("t", postId));
     }
 
     // Shared author gate for edit and delete (house style: MediaService.requireOwner). Moderator removal is

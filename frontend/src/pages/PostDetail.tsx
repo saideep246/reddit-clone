@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { CommentSortDropdown } from '../components/CommentSortDropdown';
@@ -8,9 +8,11 @@ import { PostMedia } from '../components/PostMedia';
 import { ReplyBox } from '../components/ReplyBox';
 import { VoteControl } from '../components/VoteControl';
 import { usePostDetail } from '../hooks/usePostDetail';
+import { fetchCommunityAbout } from '../lib/communityApi';
 import { decodeHtmlEntities } from '../lib/html';
 import { timeAgo } from '../lib/time';
 import type { CommentSortType } from '../types/comment';
+import { hasPermission, PERM_REMOVE_CONTENT } from '../types/moderation';
 import styles from './PostDetail.module.css';
 
 export function PostDetail() {
@@ -20,6 +22,9 @@ export function PostDetail() {
 
   const { user } = useAuth();
   const [editingPost, setEditingPost] = useState(false);
+  const [canModerate, setCanModerate] = useState(false);
+  const [modDeleting, setModDeleting] = useState(false);
+  const [modDeleteError, setModDeleteError] = useState<string | null>(null);
 
   const {
     post,
@@ -38,6 +43,33 @@ export function PostDetail() {
     editCommentBody,
     removeComment,
   } = usePostDetail(communityName, postId, sort);
+
+  // Moderators/owners holding the remove-content bit can delete anyone's post (the author uses OwnContentActions).
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetchCommunityAbout(communityName)
+      .then((c) => {
+        if (!cancelled) setCanModerate(hasPermission(c.myPermissions, PERM_REMOVE_CONTENT));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user, communityName]);
+
+  const handleModDelete = async () => {
+    if (!window.confirm('Delete this post? This cannot be undone.')) return;
+    setModDeleting(true);
+    setModDeleteError(null);
+    try {
+      await removePost();
+    } catch (e) {
+      setModDeleteError(e instanceof Error ? e.message : 'Could not delete the post.');
+    } finally {
+      setModDeleting(false);
+    }
+  };
 
   if (loading) {
     return <div className={styles.state}>Loading…</div>;
@@ -125,6 +157,13 @@ export function PostDetail() {
               onDelete={removePost}
             />
           )}
+
+          {user && canModerate && user.id !== post.authorId && !post.deleted && !post.removed && !editingPost && (
+            <button type="button" className={styles.deleteButton} disabled={modDeleting} onClick={handleModDelete}>
+              {modDeleting ? 'Deleting…' : 'Delete'}
+            </button>
+          )}
+          {modDeleteError && <div className={styles.deleteError}>{modDeleteError}</div>}
         </div>
       </article>
 

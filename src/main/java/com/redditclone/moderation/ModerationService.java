@@ -77,28 +77,6 @@ public class ModerationService {
         deleteFromModQueue(communityId, targetType, targetId);
     }
 
-    // Post deletion by its author, or by a moderator/owner holding PERM_REMOVE_CONTENT (the owner's bitmask
-    // covers every bit). Same soft removal as removeContent — the row stays, hidden from every listing.
-    @Transactional
-    public void deletePost(UUID actorId, UUID communityId, UUID postId) {
-        Post post = postService.findById(postId);
-        if (!post.getCommunityId().equals(communityId)) {
-            throw new NotFoundException("post not found in this community");
-        }
-        boolean isAuthor = actorId.equals(post.getAuthorId());
-        if (!isAuthor) {
-            communityService.requirePermission(actorId, communityId, CommunityModerator.PERM_REMOVE_CONTENT);
-        }
-        if (post.isRemoved()) {
-            return;
-        }
-        postService.markRemoved(postId);
-        if (!isAuthor) {
-            auditWriter.logAction(communityId, actorId, "remove_post", "post", postId, null);
-        }
-        deleteFromModQueue(communityId, "post", postId);
-    }
-
     // A moderator's permission is only checked against the community named in the URL — without this,
     // a targetId from an unrelated community would still pass that check and get silently acted on.
     private void requireTargetInCommunity(String targetType, UUID targetId, UUID communityId) {
