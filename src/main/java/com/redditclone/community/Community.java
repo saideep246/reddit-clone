@@ -39,6 +39,21 @@ public class Community {
     @Column(columnDefinition = "jsonb", nullable = false)
     private String rules = "[]";
 
+    @JsonIgnore
+    @Column(name = "icon_media_id")
+    private UUID iconMediaId;
+
+    @JsonIgnore
+    @Column(name = "banner_media_id")
+    private UUID bannerMediaId;
+
+    // Resolved from the media ids above by CommunityService.attachViewerContext (GET /{name}/about only).
+    @Transient
+    private String iconUrl;
+
+    @Transient
+    private String bannerUrl;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -124,6 +139,38 @@ public class Community {
 
     public void setRules(String rules) {
         this.rules = rules;
+    }
+
+    public UUID getIconMediaId() {
+        return iconMediaId;
+    }
+
+    public void setIconMediaId(UUID iconMediaId) {
+        this.iconMediaId = iconMediaId;
+    }
+
+    public UUID getBannerMediaId() {
+        return bannerMediaId;
+    }
+
+    public void setBannerMediaId(UUID bannerMediaId) {
+        this.bannerMediaId = bannerMediaId;
+    }
+
+    public String getIconUrl() {
+        return iconUrl;
+    }
+
+    public void setIconUrl(String iconUrl) {
+        this.iconUrl = iconUrl;
+    }
+
+    public String getBannerUrl() {
+        return bannerUrl;
+    }
+
+    public void setBannerUrl(String bannerUrl) {
+        this.bannerUrl = bannerUrl;
     }
 
     public Instant getCreatedAt() {

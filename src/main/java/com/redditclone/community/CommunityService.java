@@ -2,6 +2,8 @@ package com.redditclone.community;
 
 import com.redditclone.auth.AuthService;
 import com.redditclone.common.ModerationAuditWriter;
+import com.redditclone.media.MediaService;
+import com.redditclone.media.MediaView;
 import com.redditclone.common.SystemAccounts;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.BadRequestException;
@@ -51,6 +53,7 @@ public class CommunityService {
     private final ObjectMapper json;
     private final ModerationAuditWriter auditWriter;
     private final AuthService authService;
+    private final MediaService mediaService;
     private final ExecutorService regexExecutor =
             Executors.newFixedThreadPool(2, r -> {
                 Thread t = new Thread(r, "automod-regex");
@@ -63,7 +66,8 @@ public class CommunityService {
                              AutomodRuleRepository automodRules, FlairRepository flairs,
                              CommunityJoinRequestRepository joinRequests,
                              CommunityApprovedSubmitterRepository approvedSubmitters, UuidV7Generator ids,
-                             ObjectMapper json, ModerationAuditWriter auditWriter, AuthService authService) {
+                             ObjectMapper json, ModerationAuditWriter auditWriter, AuthService authService,
+                             MediaService mediaService) {
         this.communities = communities;
         this.memberships = memberships;
         this.moderators = moderators;
@@ -76,6 +80,7 @@ public class CommunityService {
         this.json = json;
         this.auditWriter = auditWriter;
         this.authService = authService;
+        this.mediaService = mediaService;
     }
 
     @Transactional
@@ -424,6 +429,47 @@ public class CommunityService {
     // CommunityController.about don't need to wrap a singleton list themselves.
     public void attachViewerContext(Community c, UUID viewerId) {
         attachViewerContextBatch(List.of(c), viewerId);
+        attachImageUrls(c);
+    }
+
+    private void attachImageUrls(Community c) {
+        Set<UUID> mediaIds = new HashSet<>();
+        if (c.getIconMediaId() != null) mediaIds.add(c.getIconMediaId());
+        if (c.getBannerMediaId() != null) mediaIds.add(c.getBannerMediaId());
+        if (mediaIds.isEmpty()) {
+            return;
+        }
+        Map<UUID, MediaView> views = mediaService.getMediaViews(mediaIds);
+        MediaView icon = views.get(c.getIconMediaId());
+        MediaView banner = views.get(c.getBannerMediaId());
+        c.setIconUrl(icon == null ? null : icon.thumbnailUrl() != null ? icon.thumbnailUrl() : icon.displayUrl());
+        c.setBannerUrl(banner == null ? null : banner.displayUrl());
+    }
+
+    // Description plus icon/banner, gated by PERM_MANAGE_RULES (the existing "community presentation"
+    // bit — rules and settings are the same kind of sidebar content). Null fields are left unchanged.
+    @Transactional
+    public void updateSettings(UUID actorId, UUID communityId, String description, UUID iconMediaId,
+                                UUID bannerMediaId, boolean clearIcon, boolean clearBanner) {
+        requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_RULES);
+        Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        if (description != null) {
+            c.setDescription(description.trim());
+        }
+        if (iconMediaId != null) {
+            mediaService.requireOwnedAndUsable(iconMediaId, actorId, "image");
+            c.setIconMediaId(iconMediaId);
+        } else if (clearIcon) {
+            c.setIconMediaId(null);
+        }
+        if (bannerMediaId != null) {
+            mediaService.requireOwnedAndUsable(bannerMediaId, actorId, "image");
+            c.setBannerMediaId(bannerMediaId);
+        } else if (clearBanner) {
+            c.setBannerMediaId(null);
+        }
+        communities.save(c);
+        auditWriter.logAction(communityId, actorId, "update_settings", "community", communityId, null);
     }
 
     // Three batched IN-queries total, regardless of how many communities are in the list — a page of 25

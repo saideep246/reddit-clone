@@ -3,13 +3,16 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { CommentSortDropdown } from '../components/CommentSortDropdown';
 import { CommentThread } from '../components/CommentThread';
+import { EditHistoryDialog } from '../components/EditHistoryDialog';
 import { OwnContentActions } from '../components/OwnContentActions';
 import { PostMedia } from '../components/PostMedia';
 import { ReplyBox } from '../components/ReplyBox';
 import { VoteControl } from '../components/VoteControl';
 import { usePostDetail } from '../hooks/usePostDetail';
+import { ApiError } from '../lib/apiClient';
 import { fetchCommunityAbout } from '../lib/communityApi';
 import { decodeHtmlEntities } from '../lib/html';
+import { fetchPostHistory } from '../lib/postApi';
 import { timeAgo } from '../lib/time';
 import type { CommentSortType } from '../types/comment';
 import { hasPermission, PERM_REMOVE_CONTENT } from '../types/moderation';
@@ -24,6 +27,12 @@ export function PostDetail() {
   const [editingPost, setEditingPost] = useState(false);
   const [canModerate, setCanModerate] = useState(false);
   const [modDeleting, setModDeleting] = useState(false);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [metaTitle, setMetaTitle] = useState('');
+  const [metaUrl, setMetaUrl] = useState('');
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [modDeleteError, setModDeleteError] = useState<string | null>(null);
 
   const {
@@ -39,6 +48,7 @@ export function PostDetail() {
     submitComment,
     loadMoreReplies,
     editPostBody,
+    editPostMeta,
     removePost,
     editCommentBody,
     removeComment,
@@ -68,6 +78,35 @@ export function PostDetail() {
       setModDeleteError(e instanceof Error ? e.message : 'Could not delete the post.');
     } finally {
       setModDeleting(false);
+    }
+  };
+
+  // Title/link edits are only accepted by the server within a grace window after posting; this client-side
+  // check just avoids offering a button that is guaranteed to be rejected (the server stays authoritative).
+  const TITLE_EDIT_WINDOW_MS = 10 * 60 * 1000;
+
+  const startMetaEdit = () => {
+    if (!post) return;
+    setMetaTitle(post.title);
+    setMetaUrl(post.url ?? '');
+    setMetaError(null);
+    setEditingMeta(true);
+  };
+
+  const saveMeta = async () => {
+    if (!post) return;
+    setMetaSaving(true);
+    setMetaError(null);
+    try {
+      const fields: { title?: string; url?: string } = {};
+      if (metaTitle.trim() && metaTitle.trim() !== post.title) fields.title = metaTitle.trim();
+      if (post.kind === 'link' && metaUrl.trim() && metaUrl.trim() !== post.url) fields.url = metaUrl.trim();
+      if (Object.keys(fields).length > 0) await editPostMeta(fields);
+      setEditingMeta(false);
+    } catch (e) {
+      setMetaError(e instanceof ApiError ? e.message : 'Could not save your changes.');
+    } finally {
+      setMetaSaving(false);
     }
   };
 
@@ -109,9 +148,37 @@ export function PostDetail() {
               r/{post.communityName ?? 'unknown'}
             </Link>{' '}
             · {timeAgo(post.createdAt)}
-            {post.editedAt && !post.deleted && <> · edited</>}
+            {post.editedAt && !post.deleted && (
+              <>
+                {' · '}
+                {user && (user.id === post.authorId || canModerate) ? (
+                  <button type="button" className={styles.linkButton} onClick={() => setShowHistory(true)}>
+                    edited
+                  </button>
+                ) : (
+                  'edited'
+                )}
+              </>
+            )}
           </div>
 
+          {editingMeta ? (
+            <div className={styles.metaEdit}>
+              <input className={styles.metaInput} value={metaTitle} maxLength={300} onChange={(e) => setMetaTitle(e.target.value)} aria-label="Title" />
+              {post.kind === 'link' && (
+                <input className={styles.metaInput} value={metaUrl} onChange={(e) => setMetaUrl(e.target.value)} aria-label="Link URL" />
+              )}
+              <div className={styles.metaActions}>
+                <button type="button" className={styles.deleteButton} disabled={metaSaving} onClick={saveMeta}>
+                  {metaSaving ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" className={styles.deleteButton} disabled={metaSaving} onClick={() => setEditingMeta(false)}>
+                  Cancel
+                </button>
+              </div>
+              {metaError && <div className={styles.deleteError}>{metaError}</div>}
+            </div>
+          ) : (
           <h1 className={styles.title}>
             {decodeHtmlEntities(post.title)}
             {post.nsfw && (
@@ -125,6 +192,7 @@ export function PostDetail() {
               </span>
             )}
           </h1>
+          )}
 
           {!post.deleted &&
             (editingPost ? (
@@ -158,6 +226,18 @@ export function PostDetail() {
             />
           )}
 
+          {user &&
+            user.id === post.authorId &&
+            !editingMeta &&
+            !editingPost &&
+            !post.deleted &&
+            !post.removed &&
+            Date.now() - new Date(post.createdAt).getTime() < TITLE_EDIT_WINDOW_MS && (
+              <button type="button" className={styles.deleteButton} onClick={startMetaEdit}>
+                Edit {post.kind === 'link' ? 'title/link' : 'title'}
+              </button>
+            )}
+
           {user && canModerate && user.id !== post.authorId && !post.deleted && !post.removed && !editingPost && (
             <button type="button" className={styles.deleteButton} disabled={modDeleting} onClick={handleModDelete}>
               {modDeleting ? 'Deleting…' : 'Delete'}
@@ -166,6 +246,8 @@ export function PostDetail() {
           {modDeleteError && <div className={styles.deleteError}>{modDeleteError}</div>}
         </div>
       </article>
+
+      {showHistory && <EditHistoryDialog load={() => fetchPostHistory(communityName, postId)} onClose={() => setShowHistory(false)} />}
 
       <div className={styles.commentsSection}>
         <CommentSortDropdown />
@@ -187,6 +269,7 @@ export function PostDetail() {
               onEdit={editCommentBody}
               onDelete={removeComment}
               readOnly={post.deleted}
+              canModerate={canModerate}
             />
           ))
         )}

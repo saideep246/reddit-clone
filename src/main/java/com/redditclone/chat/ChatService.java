@@ -1,6 +1,7 @@
 package com.redditclone.chat;
 
 import com.redditclone.auth.AuthService;
+import com.redditclone.block.BlockService;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.BadRequestException;
 import com.redditclone.common.exception.ForbiddenException;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 @Service
 public class ChatService {
 
+    private final BlockService blocks;
     private final ChatRoomRepository chatRooms;
     private final ChatRoomParticipantRepository participants;
     private final ChatMessageRepository messages;
@@ -41,6 +43,7 @@ public class ChatService {
     public ChatService(ChatRoomRepository chatRooms, ChatRoomParticipantRepository participants,
                         ChatMessageRepository messages, AuthService authService, Sanitizer sanitizer,
                         UuidV7Generator ids, NamedParameterJdbcTemplate jdbc,
+                        BlockService blocks,
                         @Value("${app.chat.max-message-length}") int maxMessageLength) {
         this.chatRooms = chatRooms;
         this.participants = participants;
@@ -49,6 +52,7 @@ public class ChatService {
         this.sanitizer = sanitizer;
         this.ids = ids;
         this.jdbc = jdbc;
+        this.blocks = blocks;
         this.maxMessageLength = maxMessageLength;
     }
 
@@ -82,6 +86,7 @@ public class ChatService {
         // above) is never affected, so a conversation that already exists keeps working even if one side
         // later opts into this restriction.
         for (UUID targetId : resolved.values()) {
+            blocks.requireNotBlockedBy(targetId, callerId);
             if (!targetId.equals(callerId) && authService.restrictsChatToKnown(targetId)
                     && !alreadyKnowsEachOther(callerId, targetId)) {
                 throw new ForbiddenException("this user only accepts messages from people they've already talked to");

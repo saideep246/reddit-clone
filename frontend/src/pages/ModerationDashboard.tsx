@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { AutomodTab } from '../components/AutomodTab';
 import { BansTab } from '../components/BansTab';
 import { JoinRequestsTab } from '../components/JoinRequestsTab';
+import { CommunitySettingsTab } from '../components/CommunitySettingsTab';
 import { ModQueueTab } from '../components/ModQueueTab';
 import { SettingsTab } from '../components/SettingsTab';
 import { fetchCommunityAbout } from '../lib/communityApi';
@@ -26,11 +27,13 @@ export function ModerationDashboard() {
   const [community, setCommunity] = useState<Community | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (reloadKey === 0) setLoading(true);
     setError(null);
+
     (async () => {
       try {
         const c = await fetchCommunityAbout(communityName);
@@ -41,27 +44,32 @@ export function ModerationDashboard() {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [communityName]);
+  }, [communityName, reloadKey]);
 
   const setTab = (next: Tab) => {
     const params = new URLSearchParams(searchParams);
+
     if (next === 'queue') {
       params.delete('tab');
     } else {
       params.set('tab', next);
     }
+
     setSearchParams(params);
   };
 
   if (loading) {
     return <div className={styles.state}>Loading…</div>;
   }
+
   if (error || !community) {
     return <div className={styles.state}>{error ?? 'Community not found.'}</div>;
   }
+
   if (!community.isModerator) {
     return <div className={styles.state}>You're not a moderator of r/{communityName}.</div>;
   }
@@ -83,15 +91,26 @@ export function ModerationDashboard() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Mod Tools — r/{communityName}</h1>
+
       <div className={styles.tabs}>
-        <button type="button" className={`${styles.tab} ${activeTab === 'queue' ? styles.tabActive : ''}`} onClick={() => setTab('queue')}>
+        <button
+          type="button"
+          className={`${styles.tab} ${activeTab === 'queue' ? styles.tabActive : ''}`}
+          onClick={() => setTab('queue')}
+        >
           Queue
         </button>
+
         {canSeeBans && (
-          <button type="button" className={`${styles.tab} ${activeTab === 'bans' ? styles.tabActive : ''}`} onClick={() => setTab('bans')}>
+          <button
+            type="button"
+            className={`${styles.tab} ${activeTab === 'bans' ? styles.tabActive : ''}`}
+            onClick={() => setTab('bans')}
+          >
             Bans
           </button>
         )}
+
         {canSeeJoinRequests && (
           <button
             type="button"
@@ -101,25 +120,53 @@ export function ModerationDashboard() {
             Join Requests
           </button>
         )}
-        <button type="button" className={`${styles.tab} ${activeTab === 'automod' ? styles.tabActive : ''}`} onClick={() => setTab('automod')}>
+
+        <button
+          type="button"
+          className={`${styles.tab} ${activeTab === 'automod' ? styles.tabActive : ''}`}
+          onClick={() => setTab('automod')}
+        >
           Automod
         </button>
+
         {canManageSettings && (
-          <button type="button" className={`${styles.tab} ${activeTab === 'settings' ? styles.tabActive : ''}`} onClick={() => setTab('settings')}>
+          <button
+            type="button"
+            className={`${styles.tab} ${activeTab === 'settings' ? styles.tabActive : ''}`}
+            onClick={() => setTab('settings')}
+          >
             Settings
           </button>
         )}
       </div>
 
-      {activeTab === 'queue' && <ModQueueTab communityName={communityName} myPermissions={community.myPermissions} />}
-      {activeTab === 'bans' && canSeeBans && <BansTab communityName={communityName} />}
-      {activeTab === 'join-requests' && canSeeJoinRequests && <JoinRequestsTab communityName={communityName} />}
-      {activeTab === 'automod' && <AutomodTab communityName={communityName} canManage={canManageAutomod} />}
-      {activeTab === 'settings' && canManageSettings && (
-        <SettingsTab
+      {activeTab === 'queue' && (
+        <ModQueueTab
           communityName={communityName}
-          initialDescription={community.description}
-          onSaved={(description) => setCommunity((prev) => (prev ? { ...prev, description } : prev))}
+          myPermissions={community.myPermissions}
+        />
+      )}
+
+      {activeTab === 'bans' && canSeeBans && (
+        <BansTab communityName={communityName} />
+      )}
+
+      {activeTab === 'join-requests' && canSeeJoinRequests && (
+        <JoinRequestsTab communityName={communityName} />
+      )}
+
+      {activeTab === 'automod' && (
+        <AutomodTab
+          communityName={communityName}
+          canManage={canManageAutomod}
+        />
+      )}
+
+      {activeTab === 'settings' && (
+        <CommunitySettingsTab
+          community={community}
+          canManage={canManageSettings}
+          onSaved={() => setReloadKey((k) => k + 1)}
         />
       )}
     </div>

@@ -10,7 +10,7 @@ import com.redditclone.community.dto.ApprovedSubmitterRequest;
 import com.redditclone.community.dto.SetCommunityTypeRequest;
 import com.redditclone.community.dto.SetFlairRequest;
 import com.redditclone.community.dto.SetRulesRequest;
-import com.redditclone.community.dto.UpdateDescriptionRequest;
+import com.redditclone.community.dto.UpdateCommunitySettingsRequest;
 import com.redditclone.moderation.dto.AddModeratorRequest;
 import com.redditclone.moderation.dto.AutomodRuleRequest;
 import com.redditclone.moderation.dto.BanRequest;
@@ -185,10 +185,10 @@ public class ModerationController {
 
     // communityService.updateDescription checks PERM_MANAGE_SETTINGS internally, same convention as setRules.
     @PatchMapping("/r/{name}/mod/settings")
-    public Map<String, String> updateSettings(@AuthenticationPrincipal UUID userId, @PathVariable String name,
-                                               @Valid @RequestBody UpdateDescriptionRequest req) {
-        communityService.updateDescription(userId, communityId(name), req.description());
-        return Collections.singletonMap("description", req.description());
+    public void updateSettings(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                               @Valid @RequestBody UpdateCommunitySettingsRequest req) {
+        communityService.updateSettings(userId, communityId(name), req.description(), req.iconMediaId(),
+                req.bannerMediaId(), req.clearIcon(), req.clearBanner());
     }
 
     @PatchMapping("/r/{name}/mod/users/{targetUserId}/flair")

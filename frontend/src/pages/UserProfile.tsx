@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { BlockButton } from '../components/BlockButton';
 import { FollowButton } from '../components/FollowButton';
 import { PostCard } from '../components/PostCard';
 import { PostList } from '../components/PostList';
@@ -66,6 +67,7 @@ export function UserProfile() {
           <h1 className={styles.username}>u/{profile.username}</h1>
           <div className={styles.joined}>Joined {JOIN_DATE_FORMAT.format(new Date(profile.createdAt))}</div>
           <FollowButton profile={profile} isOwnProfile={viewer?.username === profile.username} onFollow={follow} onUnfollow={unfollow} />
+          <BlockButton username={profile.username} isOwnProfile={viewer?.username === profile.username} onChanged={() => window.location.reload()} />
           {actionError && <p className={styles.actionError}>{actionError}</p>}
         </div>
         <div className={styles.karma}>

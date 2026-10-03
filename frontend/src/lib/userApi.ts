@@ -73,3 +73,26 @@ export function fetchFollowing(username: string, after?: string | null): Promise
   const query = after ? `?after=${encodeURIComponent(after)}` : '';
   return api.get(`/user/${username}/following${query}`) as Promise<Listing<PublicProfile>>;
 }
+
+export interface BlockedUser {
+  id: string;
+  username: string;
+  blockedAt: string;
+}
+
+export function blockUser(username: string): Promise<{ changed: boolean }> {
+  return api.post(`/user/${username}/block`) as Promise<{ changed: boolean }>;
+}
+
+export function unblockUser(username: string): Promise<{ changed: boolean }> {
+  return api.del(`/user/${username}/block`) as Promise<{ changed: boolean }>;
+}
+
+// Authenticated-only on the backend — only ever call this for a logged-in viewer.
+export function fetchBlockStatus(username: string): Promise<{ isBlocked: boolean }> {
+  return api.get(`/user/${username}/block`) as Promise<{ isBlocked: boolean }>;
+}
+
+export function fetchBlockedUsers(): Promise<BlockedUser[]> {
+  return api.get('/api/blocked') as Promise<BlockedUser[]>;
+}

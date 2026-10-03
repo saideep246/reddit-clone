@@ -1,5 +1,6 @@
 package com.redditclone.comment;
 
+import com.redditclone.comment.dto.CommentEditView;
 import com.redditclone.comment.dto.CommentView;
 import com.redditclone.comment.dto.EditCommentRequest;
 import com.redditclone.comment.dto.PostWithCommentsView;
@@ -52,6 +53,11 @@ public class CommentController {
     public CommentView editComment(@AuthenticationPrincipal UUID userId, @PathVariable UUID commentId,
                                     @Valid @RequestBody EditCommentRequest req) {
         return commentService.editBody(userId, commentId, req.body());
+    }
+
+    @GetMapping("/api/comment/{commentId}/history")
+    public List<CommentEditView> commentHistory(@AuthenticationPrincipal UUID userId, @PathVariable UUID commentId) {
+        return commentService.history(userId, commentId);
     }
 
     @DeleteMapping("/api/comment/{commentId}")

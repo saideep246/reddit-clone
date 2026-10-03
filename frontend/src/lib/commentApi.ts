@@ -53,3 +53,14 @@ export async function fetchMyCommentVotes(commentIds: string[]): Promise<Record<
   const params = new URLSearchParams({ targetType: 'comment', targetIds: commentIds.join(',') });
   return (await api.get(`/api/vote/mine?${params.toString()}`)) as Record<string, 1 | -1>;
 }
+
+export interface CommentRevision {
+  id: string;
+  editorId: string;
+  body: string | null;
+  editedAt: string;
+}
+
+export function fetchCommentHistory(commentId: string): Promise<CommentRevision[]> {
+  return api.get(`/api/comment/${commentId}/history`) as Promise<CommentRevision[]>;
+}

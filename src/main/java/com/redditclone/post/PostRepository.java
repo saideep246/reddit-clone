@@ -24,6 +24,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.createdAt < :cursorCreatedAt OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
             ORDER BY p.createdAt DESC, p.id DESC
             """)
     List<Post> findNewPage(@Param("communityId") UUID communityId,
@@ -50,6 +52,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.createdAt < :cursorCreatedAt OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))
@@ -76,6 +80,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.createdAt < :cursorCreatedAt OR (p.createdAt = :cursorCreatedAt AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))
@@ -93,6 +99,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.hotRank < :cursorRank OR (p.hotRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
             ORDER BY p.hotRank DESC, p.id DESC
             """)
     List<Post> findHotPage(@Param("communityId") UUID communityId,
@@ -108,6 +116,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.hotRank < :cursorRank OR (p.hotRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))
@@ -124,6 +134,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.score < :cursorScore OR (p.score = :cursorScore AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
             ORDER BY p.score DESC, p.id DESC
             """)
     List<Post> findTopPage(@Param("communityId") UUID communityId,
@@ -140,6 +152,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.score < :cursorScore OR (p.score = :cursorScore AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))
@@ -157,6 +171,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.risingRank < :cursorRank OR (p.risingRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
             ORDER BY p.risingRank DESC, p.id DESC
             """)
     List<Post> findRisingPage(@Param("communityId") UUID communityId,
@@ -172,6 +188,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.risingRank < :cursorRank OR (p.risingRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))
@@ -188,6 +206,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.controversialRank < :cursorRank OR (p.controversialRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
             ORDER BY p.controversialRank DESC, p.id DESC
             """)
     List<Post> findControversialPage(@Param("communityId") UUID communityId,
@@ -203,6 +223,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
               AND (p.controversialRank < :cursorRank OR (p.controversialRank = :cursorRank AND p.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'post' AND h.targetId = p.id))
+              AND (:viewerId IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM UserBlock b WHERE b.blockerId = :viewerId AND b.blockedId = p.authorId))
               AND (NOT EXISTS (SELECT 1 FROM Community cm WHERE cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Membership m WHERE m.userId = :viewerId AND m.communityId = p.communityId)
                    OR EXISTS (SELECT 1 FROM CommunityModerator cmod WHERE cmod.userId = :viewerId AND cmod.communityId = p.communityId))

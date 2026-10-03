@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { decodeHtmlEntities } from '../lib/html';
+import { fetchCommentHistory } from '../lib/commentApi';
 import { timeAgo } from '../lib/time';
 import type { CommentNode } from '../types/comment';
+import { EditHistoryDialog } from './EditHistoryDialog';
 import { OwnContentActions } from './OwnContentActions';
 import { ReplyBox } from './ReplyBox';
 import { VoteControl } from './VoteControl';
@@ -22,12 +24,15 @@ interface CommentThreadProps {
   // True when the whole post is a tombstone — the server rejects replies to a deleted post, so no Reply
   // affordance is offered anywhere in its thread.
   readOnly?: boolean;
+  // Moderators with remove-content permission may open a comment's edit history (the author always can).
+  canModerate?: boolean;
 }
 
-export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onEdit, onDelete, readOnly = false }: CommentThreadProps) {
+export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onEdit, onDelete, readOnly = false, canModerate = false }: CommentThreadProps) {
   const { user } = useAuth();
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const handleReply = async (body: string) => {
     await onReply(comment.id, body);
@@ -58,9 +63,21 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
             )}{' '}
             <span className={styles.time}>
               · {timeAgo(comment.createdAt)}
-              {comment.editedAt && !comment.deleted && <> · edited</>}
+              {comment.editedAt && !comment.deleted && (
+                <>
+                  {' · '}
+                  {user && (user.id === comment.authorId || canModerate) ? (
+                    <button type="button" className={styles.historyLink} onClick={() => setShowHistory(true)}>
+                      edited
+                    </button>
+                  ) : (
+                    'edited'
+                  )}
+                </>
+              )}
             </span>
           </div>
+          {showHistory && <EditHistoryDialog load={() => fetchCommentHistory(comment.id)} onClose={() => setShowHistory(false)} />}
           {editing ? (
             <ReplyBox
               placeholder="Edit your comment"
@@ -107,6 +124,7 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
               onEdit={onEdit}
               onDelete={onDelete}
               readOnly={readOnly}
+              canModerate={canModerate}
             />
           ))}
           {comment.repliesAfter !== null && (

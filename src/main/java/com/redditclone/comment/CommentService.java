@@ -1,6 +1,8 @@
 package com.redditclone.comment;
 
 import com.redditclone.auth.AuthService;
+import com.redditclone.block.BlockService;
+import com.redditclone.comment.dto.CommentEditView;
 import com.redditclone.comment.dto.CommentView;
 import com.redditclone.comment.dto.UserCommentView;
 import com.redditclone.common.KarmaEvent;
@@ -18,6 +20,7 @@ import com.redditclone.common.paging.RankCursor;
 import com.redditclone.common.paging.RankCursorCodec;
 import com.redditclone.common.paging.Thing;
 import com.redditclone.common.text.Sanitizer;
+import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.post.Post;
 import com.redditclone.post.PostService;
@@ -60,6 +63,7 @@ public class CommentService {
     // to match a real username.
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<![\\w/])u/([A-Za-z0-9_]{3,32})");
 
+    private final BlockService blocks;
     private final CommentRepository comments;
     private final PostService postService;
     private final UuidV7Generator ids;
@@ -71,7 +75,8 @@ public class CommentService {
 
     public CommentService(CommentRepository comments, PostService postService, UuidV7Generator ids,
                            Sanitizer sanitizer, NamedParameterJdbcTemplate jdbc,
-                           CommunityService communityService, AuthService authService, OutboxWriter outbox) {
+                           CommunityService communityService, AuthService authService, OutboxWriter outbox,
+                           BlockService blocks) {
         this.comments = comments;
         this.postService = postService;
         this.ids = ids;
@@ -80,6 +85,7 @@ public class CommentService {
         this.communityService = communityService;
         this.authService = authService;
         this.outbox = outbox;
+        this.blocks = blocks;
     }
 
     @Transactional
@@ -91,6 +97,7 @@ public class CommentService {
         // not, it only gates posting, so this is intentionally requireViewAccess, not requirePostAccess.
         communityService.requireViewAccess(authorId, post.getCommunityId());
         communityService.requireNotBanned(authorId, post.getCommunityId());
+        blocks.requireNotBlockedBy(post.getAuthorId(), authorId);
         if (post.isLocked()) {
             throw new ForbiddenException("this post is locked");
         }
@@ -118,6 +125,7 @@ public class CommentService {
             if (parent.isDeleted()) {
                 throw new NotFoundException("parent comment not found");
             }
+            blocks.requireNotBlockedBy(parent.getAuthorId(), authorId);
             if (parent.getDepth() >= MAX_DEPTH) {
                 throw new BadRequestException("max comment depth reached");
             }
@@ -442,6 +450,9 @@ public class CommentService {
         if (c.isDeleted()) {
             throw new NotFoundException("comment not found");
         }
+        jdbc.update("INSERT INTO comment_edits (id, comment_id, editor_id, old_body) VALUES (:id, :commentId, :editorId, :body)",
+                new MapSqlParameterSource().addValue("id", ids.nextId()).addValue("commentId", commentId)
+                        .addValue("editorId", actorId).addValue("body", c.getBody()));
         c.setBody(sanitizer.sanitize(body));
         c.setEditedAt(Instant.now());
         Post post = postService.findById(c.getPostId());
@@ -452,6 +463,19 @@ public class CommentService {
         comments.save(c);
         attachAuthorUsernames(List.of(c));
         return CommentView.from(c);
+    }
+
+    // Revision history for the comment's author or a moderator of its community (PERM_REMOVE_CONTENT).
+    public List<CommentEditView> history(UUID actorId, UUID commentId) {
+        Comment c = findById(commentId);
+        if (!c.getAuthorId().equals(actorId)) {
+            Post post = postService.findById(c.getPostId());
+            communityService.requirePermission(actorId, post.getCommunityId(), CommunityModerator.PERM_REMOVE_CONTENT);
+        }
+        return jdbc.query("SELECT id, editor_id, old_body, edited_at FROM comment_edits WHERE comment_id = :id ORDER BY edited_at DESC",
+                new MapSqlParameterSource("id", commentId),
+                (rs, i) -> new CommentEditView(rs.getObject("id", UUID.class), rs.getObject("editor_id", UUID.class),
+                        rs.getString("old_body"), rs.getTimestamp("edited_at").toInstant()));
     }
 
     // Wipes the body rather than only hiding it at read time, same as PostService.delete. The row, parentId,

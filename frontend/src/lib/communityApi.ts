@@ -42,3 +42,15 @@ export function browseCommunities(sort: CommunityBrowseSort, after?: string | nu
 export function searchCommunities(query: string): Promise<Community[]> {
   return api.get(`/r/search?q=${encodeURIComponent(query)}`) as Promise<Community[]>;
 }
+
+export interface CommunitySettingsUpdate {
+  description?: string;
+  iconMediaId?: string;
+  bannerMediaId?: string;
+  clearIcon?: boolean;
+  clearBanner?: boolean;
+}
+
+export function updateCommunitySettings(name: string, update: CommunitySettingsUpdate): Promise<unknown> {
+  return api.patch(`/r/${name}/mod/settings`, update);
+}

@@ -9,7 +9,7 @@ import {
   postComment,
 } from '../lib/commentApi';
 import { castVote, removeVote } from '../lib/feedApi';
-import { deletePost, editPost } from '../lib/postApi';
+import { deletePost, editPost, editPostFields, type PostEditFields } from '../lib/postApi';
 import type { CommentNode, CommentSortType } from '../types/comment';
 import type { Post } from '../types/post';
 
@@ -51,6 +51,7 @@ interface UsePostDetailResult {
   submitComment: (parentId: string | null, body: string) => Promise<void>;
   loadMoreReplies: (parentId: string) => void;
   editPostBody: (body: string) => Promise<void>;
+  editPostMeta: (fields: PostEditFields) => Promise<void>;
   removePost: () => Promise<void>;
   editCommentBody: (commentId: string, body: string) => Promise<void>;
   removeComment: (commentId: string) => Promise<void>;
@@ -224,6 +225,16 @@ export function usePostDetail(communityName: string, postId: string, sort: Comme
     [communityName, postId, post],
   );
 
+  // Title/link edits are not optimistic: the server may reject them (grace window, validation), and showing a
+  // title that then snaps back would be more confusing than a short wait.
+  const editPostMeta = useCallback(
+    async (fields: PostEditFields) => {
+      const saved = await editPostFields(communityName, postId, fields);
+      setPost((prev) => (prev ? { ...prev, title: saved.title, url: saved.url, editedAt: saved.editedAt } : prev));
+    },
+    [communityName, postId],
+  );
+
   // Not optimistic: content loss is irreversible, so the tombstone is only applied once the server confirms.
   // Mirrors what the server wipes (see PostService.delete), so the page reflects it without a refetch.
   const removePost = useCallback(async () => {
@@ -287,6 +298,7 @@ export function usePostDetail(communityName: string, postId: string, sort: Comme
     submitComment,
     loadMoreReplies,
     editPostBody,
+    editPostMeta,
     removePost,
     editCommentBody,
     removeComment,

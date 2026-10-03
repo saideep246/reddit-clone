@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { BlockedUsersSection } from '../components/BlockedUsersSection';
 import { NotificationPrefsForm } from '../components/NotificationPrefsForm';
 import { ApiError } from '../lib/apiClient';
 import { deleteAccount } from '../lib/settingsApi';
@@ -42,6 +43,11 @@ export function Settings() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Settings</h1>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Blocked users</h2>
+        <BlockedUsersSection />
+      </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Account</h2>

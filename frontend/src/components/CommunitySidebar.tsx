@@ -17,8 +17,10 @@ export function CommunitySidebar({ community, rules, actionError, onJoin, onLeav
 
   return (
     <aside className={styles.sidebar}>
+      {community.bannerUrl && <img className={styles.banner} src={community.bannerUrl} alt="" />}
       <div className={styles.header}>
         <h2 className={styles.name}>
+          {community.iconUrl && <img className={styles.icon} src={community.iconUrl} alt="" />}
           r/{community.name}
           {community.isModerator && <span className={styles.modBadge}>Mod</span>}
         </h2>

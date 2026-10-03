@@ -17,6 +17,7 @@ import com.redditclone.media.Media;
 import com.redditclone.media.MediaService;
 import com.redditclone.media.MediaView;
 import com.redditclone.post.dto.CreatePostRequest;
+import com.redditclone.post.dto.PostEditView;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -52,12 +53,14 @@ public class PostService {
     private final MediaService mediaService;
     private final ModerationAuditWriter auditWriter;
     private final int maxPinnedPosts;
+    private final int titleEditWindowMinutes;
 
     public PostService(PostRepository posts, PostMediaRepository postMedia, UuidV7Generator ids,
                         StringRedisTemplate redis, Sanitizer sanitizer, NamedParameterJdbcTemplate jdbc,
                         CommunityService communityService, AuthService authService, MediaService mediaService,
                         ModerationAuditWriter auditWriter,
-                        @Value("${app.moderation.max-pinned-posts}") int maxPinnedPosts) {
+                        @Value("${app.moderation.max-pinned-posts}") int maxPinnedPosts,
+                        @Value("${app.posts.title-edit-window-minutes:10}") int titleEditWindowMinutes) {
         this.posts = posts;
         this.postMedia = postMedia;
         this.ids = ids;
@@ -69,6 +72,7 @@ public class PostService {
         this.mediaService = mediaService;
         this.auditWriter = auditWriter;
         this.maxPinnedPosts = maxPinnedPosts;
+        this.titleEditWindowMinutes = titleEditWindowMinutes;
     }
 
     @Transactional
@@ -220,16 +224,53 @@ public class PostService {
         posts.save(p);
     }
 
+    // body is editable on text posts at any time; title and (link-post) url only inside a short grace window
+    // after posting, so a post can't be silently rewritten under the votes and comments it has gathered.
+    // Every change snapshots the previous values into post_edits first.
     @Transactional
-    public Post editBody(UUID actorId, UUID communityId, UUID postId, String body) {
+    public Post edit(UUID actorId, UUID communityId, UUID postId, String body, String title, String url) {
+        if (body == null && title == null && url == null) {
+            throw new BadRequestException("nothing to edit");
+        }
         Post p = requireAuthoredPost(actorId, communityId, postId);
         if (p.isDeleted()) {
             throw new NotFoundException("post not found");
         }
-        if (!"text".equals(p.getKind())) {
+        if (body != null && body.isBlank()) {
+            throw new BadRequestException("body must not be blank");
+        }
+        if (title != null && title.isBlank()) {
+            throw new BadRequestException("title must not be blank");
+        }
+        if (body != null && !"text".equals(p.getKind())) {
             throw new BadRequestException("only text posts have an editable body");
         }
-        p.setBody(sanitizer.sanitize(body));
+        if (url != null && !"link".equals(p.getKind())) {
+            throw new BadRequestException("only link posts have an editable url");
+        }
+        if (url != null && !url.matches("^https?://\\S+$")) {
+            throw new BadRequestException("url must start with http:// or https://");
+        }
+        if ((title != null || url != null)
+                && Instant.now().isAfter(p.getCreatedAt().plus(Duration.ofMinutes(titleEditWindowMinutes)))) {
+            throw new ForbiddenException("title and link can only be edited within " + titleEditWindowMinutes
+                    + " minutes of posting");
+        }
+        jdbc.update("""
+                INSERT INTO post_edits (id, post_id, editor_id, old_title, old_body, old_url)
+                VALUES (:id, :postId, :editorId, :title, :body, :url)
+                """, new MapSqlParameterSource().addValue("id", ids.nextId()).addValue("postId", postId)
+                .addValue("editorId", actorId).addValue("title", p.getTitle()).addValue("body", p.getBody())
+                .addValue("url", p.getUrl()));
+        if (title != null) {
+            p.setTitle(sanitizer.sanitize(title));
+        }
+        if (body != null) {
+            p.setBody(sanitizer.sanitize(body));
+        }
+        if (url != null) {
+            p.setUrl(url);
+        }
         p.setEditedAt(Instant.now());
         if (communityService.evaluateAutomod(p.getCommunityId(), "post", postId, p.getTitle(), p.getBody(),
                 authService.getKarmaPost(actorId))) {
@@ -237,6 +278,25 @@ public class PostService {
         }
         posts.save(p);
         return attachAll(p);
+    }
+
+    // Revision history: the author, or a moderator who could act on the post (PERM_REMOVE_CONTENT), newest
+    // first. Everyone else gets 403 rather than 404 — the post itself is public, only its past is not.
+    public List<PostEditView> history(UUID actorId, UUID communityId, UUID postId) {
+        Post p = findById(postId);
+        if (!p.getCommunityId().equals(communityId)) {
+            throw new NotFoundException("post not found");
+        }
+        if (!p.getAuthorId().equals(actorId)) {
+            communityService.requirePermission(actorId, communityId, CommunityModerator.PERM_REMOVE_CONTENT);
+        }
+        return jdbc.query("""
+                SELECT id, editor_id, old_title, old_body, old_url, edited_at FROM post_edits
+                WHERE post_id = :postId ORDER BY edited_at DESC
+                """, new MapSqlParameterSource("postId", postId),
+                (rs, i) -> new PostEditView(rs.getObject("id", UUID.class), rs.getObject("editor_id", UUID.class),
+                        rs.getString("old_title"), rs.getString("old_body"), rs.getString("old_url"),
+                        rs.getTimestamp("edited_at").toInstant()));
     }
 
     // Tombstones rather than hard-deleting: the row, its comment thread, and its ranking history stay so

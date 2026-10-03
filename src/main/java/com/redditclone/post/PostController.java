@@ -11,6 +11,7 @@ import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
 import com.redditclone.post.dto.CreatePostRequest;
 import com.redditclone.post.dto.EditPostRequest;
+import com.redditclone.post.dto.PostEditView;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -66,7 +67,14 @@ public class PostController {
     public Post editPost(@AuthenticationPrincipal UUID userId, @PathVariable String communityName,
                           @PathVariable UUID postId, @Valid @RequestBody EditPostRequest req) {
         UUID communityId = communityService.findByName(communityName).getId();
-        return postService.editBody(userId, communityId, postId, req.body());
+        return postService.edit(userId, communityId, postId, req.body(), req.title(), req.url());
+    }
+
+    @GetMapping("/posts/{postId}/history")
+    public List<PostEditView> postHistory(@AuthenticationPrincipal UUID userId, @PathVariable String communityName,
+                                          @PathVariable UUID postId) {
+        UUID communityId = communityService.findByName(communityName).getId();
+        return postService.history(userId, communityId, postId);
     }
 
     @DeleteMapping("/posts/{postId}")

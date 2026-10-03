@@ -24,3 +24,25 @@ export function editPost(communityName: string, postId: string, body: string): P
 export function deletePost(communityName: string, postId: string): Promise<unknown> {
   return api.del(`/r/${communityName}/posts/${postId}`);
 }
+
+export interface PostEditFields {
+  title?: string;
+  url?: string;
+}
+
+export function editPostFields(communityName: string, postId: string, fields: PostEditFields): Promise<Post> {
+  return api.patch(`/r/${communityName}/posts/${postId}`, fields) as Promise<Post>;
+}
+
+export interface PostRevision {
+  id: string;
+  editorId: string;
+  title: string | null;
+  body: string | null;
+  url: string | null;
+  editedAt: string;
+}
+
+export function fetchPostHistory(communityName: string, postId: string): Promise<PostRevision[]> {
+  return api.get(`/r/${communityName}/posts/${postId}/history`) as Promise<PostRevision[]>;
+}
