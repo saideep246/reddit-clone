@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { DraftsPanel } from '../components/DraftsPanel';
 import { FlairPicker } from '../components/FlairPicker';
 import { useCommunitySearch } from '../hooks/useCommunitySearch';
 import { useGalleryUpload } from '../hooks/useGalleryUpload';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { ApiError } from '../lib/apiClient';
-import { submitPost } from '../lib/postApi';
+import { createDraft, deleteDraft, fetchDrafts, schedulePost, submitPost, updateDraft, type DraftPayload } from '../lib/postApi';
 import type { PostKind } from '../types/post';
 import styles from './PostSubmit.module.css';
 
-type Tab = 'text' | 'media' | 'gallery' | 'link';
+type Tab = 'text' | 'media' | 'gallery' | 'link' | 'poll';
 
 export function PostSubmit() {
   const { user } = useAuth();
@@ -36,6 +37,56 @@ export function PostSubmit() {
   const [error, setError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
 
+  const [searchParams] = useSearchParams();
+  // Crosspost mode: /r/{target}/submit?crosspost=<postId>&from=<community>&title=<original title>
+  const crosspostId = searchParams.get('crosspost');
+  const crosspostFrom = searchParams.get('from');
+  const draftParam = searchParams.get('draft');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollDays, setPollDays] = useState(3);
+  const [scheduleOn, setScheduleOn] = useState(false);
+  const [publishAt, setPublishAt] = useState('');
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(draftParam);
+  const [draftMessage, setDraftMessage] = useState<string | null>(null);
+
+  // Prefill the title when crossposting.
+  useEffect(() => {
+    const t = searchParams.get('title');
+    if (crosspostId && t) setTitle(t.slice(0, 300));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crosspostId]);
+
+  // Resume a saved draft (?draft=<id>).
+  useEffect(() => {
+    if (!draftParam || !user) return;
+    let cancelled = false;
+    fetchDrafts()
+      .then((all) => {
+        const d = all.find((x) => x.id === draftParam);
+        if (!d || cancelled) return;
+        const p = d.payload;
+        setTitle(p.title ?? '');
+        setBody(p.body ?? '');
+        setUrl(p.url ?? '');
+        setNsfw(!!p.nsfw);
+        setSpoiler(!!p.spoiler);
+        if (p.kind === 'poll') {
+          setTab('poll');
+          setPollOptions(p.pollOptions && p.pollOptions.length >= 2 ? p.pollOptions : ['', '']);
+          setPollDays(p.pollDays ?? 3);
+        } else if (p.kind === 'link') {
+          setTab('link');
+        } else {
+          setTab('text');
+        }
+        setSavedDraftId(d.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [draftParam, user]);
+
   const media = useMediaUpload();
   const gallery = useGalleryUpload();
 
@@ -55,7 +106,8 @@ export function PostSubmit() {
     return (
       <div className={styles.wrapper}>
         <div className={styles.card}>
-          <h1 className={styles.title}>Choose a community</h1>
+          <h1 className={styles.title}>{crosspostId ? 'Crosspost to…' : 'Choose a community'}</h1>
+          {!crosspostId && <DraftsPanel activeId={savedDraftId} />}
           <input
             className={styles.searchInput}
             type="search"
@@ -68,7 +120,7 @@ export function PostSubmit() {
           {!picker.loading &&
             debouncedPickerQuery.trim() &&
             picker.communities.map((c) => (
-              <button key={c.id} type="button" className={styles.pickerResult} onClick={() => navigate(`/r/${c.name}/submit`)}>
+              <button key={c.id} type="button" className={styles.pickerResult} onClick={() => navigate(`/r/${c.name}/submit${window.location.search}`)}>
                 <span>r/{c.name}</span>
                 <span>{c.subscriberCount} members</span>
               </button>
@@ -87,7 +139,15 @@ export function PostSubmit() {
       return;
     }
     let kind: PostKind;
-    if (tab === 'text') {
+    if (crosspostId) {
+      kind = 'crosspost';
+    } else if (tab === 'poll') {
+      kind = 'poll';
+      if (pollOptions.some((o) => !o.trim())) {
+        setError('Fill in every poll option, or remove the empty ones.');
+        return;
+      }
+    } else if (tab === 'text') {
       kind = 'text';
       if (!body.trim()) {
         setError('Text posts need a body.');
@@ -121,11 +181,14 @@ export function PostSubmit() {
       kind = media.kind;
     }
 
+    if (scheduleOn && (!publishAt || new Date(publishAt).getTime() < Date.now() + 60_000)) {
+      setError('Pick a schedule time at least a minute from now.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const post = await submitPost(
-        communityName,
-        {
+      const request = {
           kind,
           title: title.trim(),
           body: kind === 'text' ? body.trim() : undefined,
@@ -135,9 +198,18 @@ export function PostSubmit() {
           flairId: flairId ?? undefined,
           nsfw,
           spoiler,
-        },
-        idempotencyKeyRef.current,
-      );
+          pollOptions: kind === 'poll' ? pollOptions.map((o) => o.trim()) : undefined,
+          pollDays: kind === 'poll' ? pollDays : undefined,
+          crosspostOf: kind === 'crosspost' ? crosspostId! : undefined,
+      };
+      if (scheduleOn) {
+        await schedulePost(communityName, request, new Date(publishAt).toISOString());
+        if (savedDraftId) await deleteDraft(savedDraftId).catch(() => {});
+        navigate('/scheduled');
+        return;
+      }
+      const post = await submitPost(communityName, request, idempotencyKeyRef.current);
+      if (savedDraftId) await deleteDraft(savedDraftId).catch(() => {});
       navigate(`/r/${communityName}/comments/${post.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create your post. Please try again.');
@@ -145,15 +217,43 @@ export function PostSubmit() {
     }
   };
 
+  // Drafts keep text, link and poll content; uploaded media isn't carried (uploads are short-lived).
+  const handleSaveDraft = async () => {
+    setDraftMessage(null);
+    const payload: DraftPayload = {
+      kind: tab === 'poll' ? 'poll' : tab === 'link' ? 'link' : 'text',
+      title,
+      body: body || undefined,
+      url: url || undefined,
+      pollOptions: tab === 'poll' ? pollOptions : undefined,
+      pollDays: tab === 'poll' ? pollDays : undefined,
+      nsfw,
+      spoiler,
+    };
+    try {
+      const saved = savedDraftId ? await updateDraft(savedDraftId, communityName, payload) : await createDraft(communityName, payload);
+      setSavedDraftId(saved.id);
+      setDraftMessage('Draft saved.');
+    } catch (err) {
+      setDraftMessage(err instanceof ApiError ? err.message : 'Could not save the draft.');
+    }
+  };
+
   return (
     <div className={styles.wrapper}>
       <form className={styles.card} onSubmit={handleSubmit}>
-        <h1 className={styles.title}>Create a post</h1>
+        <h1 className={styles.title}>{crosspostId ? 'Crosspost' : 'Create a post'}</h1>
         <p className={styles.communityLabel}>
           Posting to <strong>r/{communityName}</strong>
         </p>
+        {!crosspostId && <DraftsPanel activeId={savedDraftId} />}
+        {crosspostId && (
+          <p className={styles.communityLabel}>
+            Crossposting a post from <strong>r/{crosspostFrom}</strong>. You can change the title below.
+          </p>
+        )}
 
-        <div className={styles.tabs}>
+        {!crosspostId && <div className={styles.tabs}>
           <button type="button" className={`${styles.tab} ${tab === 'text' ? styles.tabActive : ''}`} onClick={() => setTab('text')}>
             Text
           </button>
@@ -166,7 +266,10 @@ export function PostSubmit() {
           <button type="button" className={`${styles.tab} ${tab === 'link' ? styles.tabActive : ''}`} onClick={() => setTab('link')}>
             Link
           </button>
-        </div>
+          <button type="button" className={`${styles.tab} ${tab === 'poll' ? styles.tabActive : ''}`} onClick={() => setTab('poll')}>
+            Poll
+          </button>
+        </div>}
 
         {error && <p className={styles.error}>{error}</p>}
 
@@ -180,7 +283,48 @@ export function PostSubmit() {
           <input id="title" className={styles.input} value={title} onChange={(e) => setTitle(e.target.value.slice(0, 300))} required />
         </div>
 
-        {tab === 'text' && (
+        {!crosspostId && tab === 'poll' && (
+          <div className={styles.field}>
+            <span className={styles.label}>Options</span>
+            {pollOptions.map((opt, i) => (
+              <div key={i} className={styles.galleryRow}>
+                <input
+                  className={styles.input}
+                  placeholder={`Option ${i + 1}`}
+                  value={opt}
+                  maxLength={100}
+                  onChange={(e) => setPollOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))}
+                />
+                {pollOptions.length > 2 && (
+                  <button
+                    type="button"
+                    className={styles.galleryRemoveButton}
+                    onClick={() => setPollOptions((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {pollOptions.length < 6 && (
+              <button type="button" className={styles.galleryMoveButton} onClick={() => setPollOptions((prev) => [...prev, ''])}>
+                + Add option
+              </button>
+            )}
+            <label className={styles.label} htmlFor="poll-days">
+              Poll length
+            </label>
+            <select id="poll-days" className={styles.input} value={pollDays} onChange={(e) => setPollDays(Number(e.target.value))}>
+              {[1, 2, 3, 5, 7].map((d) => (
+                <option key={d} value={d}>
+                  {d} day{d === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {!crosspostId && tab === 'text' && (
           <div className={styles.field}>
             <label className={styles.label} htmlFor="body">
               Text
@@ -189,7 +333,7 @@ export function PostSubmit() {
           </div>
         )}
 
-        {tab === 'link' && (
+        {!crosspostId && tab === 'link' && (
           <div className={styles.field}>
             <label className={styles.label} htmlFor="url">
               URL
@@ -205,7 +349,7 @@ export function PostSubmit() {
           </div>
         )}
 
-        {tab === 'media' && (
+        {!crosspostId && tab === 'media' && (
           <div className={styles.field}>
             <input
               className={styles.fileInput}
@@ -227,7 +371,7 @@ export function PostSubmit() {
           </div>
         )}
 
-        {tab === 'gallery' && (
+        {!crosspostId && tab === 'gallery' && (
           <div className={styles.field}>
             <input
               className={styles.fileInput}
@@ -288,13 +432,37 @@ export function PostSubmit() {
           Spoiler
         </label>
 
-        <button
-          type="submit"
-          className={styles.submit}
-          disabled={submitting || media.uploading || gallery.items.some((i) => i.uploading)}
-        >
-          {submitting ? 'Posting…' : 'Post'}
-        </button>
+        <label className={styles.checkboxRow}>
+          <input type="checkbox" checked={scheduleOn} onChange={(e) => setScheduleOn(e.target.checked)} />
+          Schedule for later
+        </label>
+        {scheduleOn && (
+          <div className={styles.field}>
+            <input
+              className={styles.input}
+              type="datetime-local"
+              value={publishAt}
+              onChange={(e) => setPublishAt(e.target.value)}
+              aria-label="Publish at"
+            />
+          </div>
+        )}
+
+        <div className={styles.labelRow}>
+          <button
+            type="submit"
+            className={styles.submit}
+            disabled={submitting || media.uploading || gallery.items.some((i) => i.uploading)}
+          >
+            {submitting ? (scheduleOn ? 'Scheduling…' : 'Posting…') : scheduleOn ? 'Schedule' : crosspostId ? 'Crosspost' : 'Post'}
+          </button>
+          {!crosspostId && (tab === 'text' || tab === 'link' || tab === 'poll') && (
+            <button type="button" className={styles.galleryMoveButton} onClick={handleSaveDraft}>
+              Save draft
+            </button>
+          )}
+        </div>
+        {draftMessage && <p className={styles.uploadStatus}>{draftMessage}</p>}
       </form>
     </div>
   );

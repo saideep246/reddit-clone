@@ -83,3 +83,63 @@ export async function addAutomodRule(
 export function removeAutomodRule(communityName: string, ruleId: string): Promise<unknown> {
   return api.del(`/r/${communityName}/mod/automod-rules/${ruleId}`);
 }
+
+// ---- Mod notes (private, moderator-only)
+export interface ModNote {
+  id: string;
+  userId: string;
+  authorId: string;
+  authorUsername: string | null;
+  note: string;
+  createdAt: string;
+}
+
+export function fetchModNotes(communityName: string, userId: string): Promise<ModNote[]> {
+  return api.get(`/r/${communityName}/mod/notes?userId=${userId}`) as Promise<ModNote[]>;
+}
+
+export function addModNote(communityName: string, userId: string, note: string): Promise<ModNote> {
+  return api.post(`/r/${communityName}/mod/notes`, { userId, note }) as Promise<ModNote>;
+}
+
+export function deleteModNote(communityName: string, noteId: string): Promise<unknown> {
+  return api.del(`/r/${communityName}/mod/notes/${noteId}`);
+}
+
+// ---- Mod log (filterable)
+export interface ModLogEntry {
+  id: string;
+  communityId: string;
+  actorId: string;
+  actorUsername: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface ModLogFilters {
+  action?: string;
+  actorId?: string;
+  targetType?: string;
+  before?: string;
+}
+
+export function fetchModLog(communityName: string, filters: ModLogFilters): Promise<ModLogEntry[]> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v) params.set(k, v);
+  });
+  const qs = params.toString();
+  return api.get(`/r/${communityName}/mod/actions${qs ? `?${qs}` : ''}`) as Promise<ModLogEntry[]>;
+}
+
+// ---- Sticky / distinguished comments
+export function stickyComment(communityName: string, commentId: string, sticky: boolean): Promise<unknown> {
+  return sticky ? api.post(`/r/${communityName}/mod/comments/${commentId}/sticky`) : api.del(`/r/${communityName}/mod/comments/${commentId}/sticky`);
+}
+
+export function distinguishComment(communityName: string, commentId: string, on: boolean): Promise<unknown> {
+  return on ? api.post(`/r/${communityName}/mod/comments/${commentId}/distinguish`) : api.del(`/r/${communityName}/mod/comments/${commentId}/distinguish`);
+}

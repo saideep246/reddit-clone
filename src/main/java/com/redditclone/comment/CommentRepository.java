@@ -13,6 +13,32 @@ import java.util.UUID;
 
 public interface CommentRepository extends JpaRepository<Comment, UUID> {
 
+    // A post's live sticky comments (oldest first), for CommentService.findCommentTree's first page.
+    List<Comment> findByPostIdAndStickyTrueAndRemovedFalseAndDeletedFalseOrderByCreatedAtAsc(UUID postId);
+
+    long countByPostIdAndStickyTrue(UUID postId);
+
+    // Ranked ids only (search_vector is deliberately unmapped on Comment, same as Post's), refetched via
+    // findAllById by CommentService.search. A null :communityId searches sitewide, excluding private
+    // communities the viewer can't see (same rule as PostRepository.searchAllIds) and anything by an author
+    // the viewer has blocked. Removed/deleted comments and comments on removed/deleted posts never match.
+    @Query(value = """
+            SELECT c.id FROM comments c
+            JOIN posts p ON p.id = c.post_id
+            JOIN communities cm ON cm.id = p.community_id
+            WHERE NOT c.removed AND NOT c.deleted AND NOT p.removed AND NOT p.deleted
+              AND c.search_vector @@ websearch_to_tsquery('english', :query)
+              AND (CAST(:communityId AS uuid) IS NULL OR p.community_id = CAST(:communityId AS uuid))
+              AND (cm.type <> 'private'
+                   OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = :viewerId AND m.community_id = p.community_id)
+                   OR EXISTS (SELECT 1 FROM community_moderators cmod WHERE cmod.user_id = :viewerId AND cmod.community_id = p.community_id))
+              AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_id = :viewerId AND b.blocked_id = c.author_id)
+            ORDER BY ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) DESC
+            LIMIT 25
+            """, nativeQuery = true)
+    List<UUID> searchIds(@Param("communityId") UUID communityId, @Param("query") String query,
+                          @Param("viewerId") UUID viewerId);
+
     // Ordered by best_rank (Wilson score lower bound on the up/down split, see RankFormulas.bestRank) —
     // Reddit's own default comment sort, not raw score: a 95-up/5-down reply outranks a 10-up/0-down one
     // despite the smaller net score, because the larger sample gives more confidence in the ratio.

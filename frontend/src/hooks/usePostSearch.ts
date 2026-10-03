@@ -14,7 +14,7 @@ interface UsePostSearchResult {
 // Not paginated — GET /r/all/search returns a single capped page server-side, same reasoning as
 // useCommunitySearch and the backend's own search queries. myVote is merged in the same way useFeed does
 // (never sent by the search response itself, see Post.myVote's own comment).
-export function usePostSearch(query: string): UsePostSearchResult {
+export function usePostSearch(query: string, community?: string): UsePostSearchResult {
   const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +34,7 @@ export function usePostSearch(query: string): UsePostSearchResult {
     setError(null);
     (async () => {
       try {
-        const results = await searchAllPosts(query.trim());
+        const results = await searchAllPosts(query.trim(), community);
         if (id !== requestId.current) return;
         if (!user || results.length === 0) {
           setPosts(results);
@@ -55,7 +55,7 @@ export function usePostSearch(query: string): UsePostSearchResult {
         if (id === requestId.current) setLoading(false);
       }
     })();
-  }, [query, user]);
+  }, [query, user, community]);
 
   return { posts, loading, error, applyVote };
 }

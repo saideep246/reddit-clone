@@ -80,7 +80,7 @@ public class SecurityConfig {
                         // comment, subscribe, save, chat, delete) require one. jwtFilter still runs on these
                         // and populates the principal when a token IS present.
                         .requestMatchers(HttpMethod.GET, "/r/*/new", "/r/*/hot", "/r/*/top", "/r/*/rising",
-                                "/r/*/controversial", "/r/*/search", "/r/*/comments/*", "/user/*/about",
+                                "/r/*/controversial", "/r/*/search", "/r/*/search/comments", "/r/*/posts/*/poll", "/r/*/comments/*", "/user/*/about",
                                 "/user/*/submitted", "/user/*/comments", "/r/*/flairs",
                                 "/r/*/pinned", "/r/*/rules", "/r", "/r/search", "/r/*/about", "/user/search",
                                 "/api/morechildren", "/user/*/followers", "/user/*/following")

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record CreatePostRequest(
-        @NotBlank @Pattern(regexp = "text|link|image|video|gallery") String kind,
+        @NotBlank @Pattern(regexp = "text|link|image|video|gallery|poll|crosspost") String kind,
         @NotBlank @Size(max = 300) String title,
         @Size(max = 40000) String body,
         String url,
@@ -19,7 +19,10 @@ public record CreatePostRequest(
         @Size(max = 20) List<@NotNull UUID> mediaIds,
         UUID flairId,
         Boolean nsfw,
-        Boolean spoiler
+        Boolean spoiler,
+        @Size(max = 6) List<String> pollOptions,
+        Integer pollDays,
+        UUID crosspostOf
 ) {
 
     // Records deserialize through their canonical constructor, not individual setters — unlike a
@@ -58,6 +61,27 @@ public record CreatePostRequest(
     @JsonIgnore
     public boolean isBodyValidForKind() {
         return !"text".equals(kind) || (body != null && !body.isBlank());
+    }
+
+    @AssertTrue(message = "a poll needs 2-6 non-blank options of at most 100 characters and lasts 1-7 days; poll fields are only for kind=poll")
+    @JsonIgnore
+    public boolean isPollValidForKind() {
+        if (!"poll".equals(kind)) {
+            return (pollOptions == null || pollOptions.isEmpty()) && pollDays == null;
+        }
+        if (pollOptions == null || pollOptions.size() < 2 || pollOptions.size() > 6) {
+            return false;
+        }
+        if (pollOptions.stream().anyMatch(o -> o == null || o.isBlank() || o.length() > 100)) {
+            return false;
+        }
+        return pollDays == null || (pollDays >= 1 && pollDays <= 7);
+    }
+
+    @AssertTrue(message = "crosspostOf is required for kind=crosspost, and must be absent otherwise")
+    @JsonIgnore
+    public boolean isCrosspostValidForKind() {
+        return "crosspost".equals(kind) ? crosspostOf != null : crosspostOf == null;
     }
 
     // Gallery posts carry their images in mediaIds (ordered), never the singular mediaId — 2 is the floor

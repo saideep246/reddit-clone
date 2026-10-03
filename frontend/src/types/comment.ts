@@ -15,6 +15,8 @@ export interface CommentNode {
   childCount: number;
   removed: boolean;
   deleted: boolean;
+  sticky?: boolean;
+  distinguished?: string | null;
   editedAt: string | null;
   createdAt: string;
   replies: CommentNode[];

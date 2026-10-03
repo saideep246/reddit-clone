@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { decodeHtmlEntities } from '../lib/html';
 import { fetchCommentHistory } from '../lib/commentApi';
+import { distinguishComment, stickyComment } from '../lib/moderationApi';
 import { timeAgo } from '../lib/time';
 import type { CommentNode } from '../types/comment';
 import { EditHistoryDialog } from './EditHistoryDialog';
@@ -26,9 +27,16 @@ interface CommentThreadProps {
   readOnly?: boolean;
   // Moderators with remove-content permission may open a comment's edit history (the author always can).
   canModerate?: boolean;
+  communityName?: string;
+  // Viewer is a moderator of this community (may distinguish their OWN comments).
+  isModerator?: boolean;
+  // Viewer holds the manage-posts permission (may sticky top-level comments).
+  canSticky?: boolean;
+  // Called after a sticky/distinguish change so the parent can refetch the tree.
+  onModChanged?: () => void;
 }
 
-export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onEdit, onDelete, readOnly = false, canModerate = false }: CommentThreadProps) {
+export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onEdit, onDelete, readOnly = false, canModerate = false, communityName, isModerator = false, canSticky = false, onModChanged }: CommentThreadProps) {
   const { user } = useAuth();
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -61,6 +69,8 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
             ) : (
               <span className={styles.author}>u/[deleted]</span>
             )}{' '}
+            {comment.distinguished === 'moderator' && <span className={styles.modBadge}>MOD</span>}
+            {comment.sticky && <span className={styles.stickyBadge}>Stickied</span>}
             <span className={styles.time}>
               · {timeAgo(comment.createdAt)}
               {comment.editedAt && !comment.deleted && (
@@ -96,6 +106,34 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
               Reply
             </button>
           )}
+          {communityName && !comment.deleted && !comment.removed && (
+            <>
+              {canSticky && comment.parentId === null && (
+                <button
+                  type="button"
+                  className={styles.replyToggle}
+                  onClick={async () => {
+                    await stickyComment(communityName, comment.id, !comment.sticky).catch(() => {});
+                    onModChanged?.();
+                  }}
+                >
+                  {comment.sticky ? 'Unsticky' : 'Sticky'}
+                </button>
+              )}
+              {isModerator && user?.id === comment.authorId && (
+                <button
+                  type="button"
+                  className={styles.replyToggle}
+                  onClick={async () => {
+                    await distinguishComment(communityName, comment.id, comment.distinguished !== 'moderator').catch(() => {});
+                    onModChanged?.();
+                  }}
+                >
+                  {comment.distinguished === 'moderator' ? 'Undistinguish' : 'Distinguish'}
+                </button>
+              )}
+            </>
+          )}
           {user && !editing && (
             <OwnContentActions
               viewerId={user.id}
@@ -125,6 +163,10 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
               onDelete={onDelete}
               readOnly={readOnly}
               canModerate={canModerate}
+              communityName={communityName}
+              isModerator={isModerator}
+              canSticky={canSticky}
+              onModChanged={onModChanged}
             />
           ))}
           {comment.repliesAfter !== null && (

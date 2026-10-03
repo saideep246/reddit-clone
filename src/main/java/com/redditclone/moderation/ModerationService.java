@@ -6,6 +6,7 @@ import com.redditclone.comment.CommentService;
 import com.redditclone.common.ModerationAuditWriter;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.BadRequestException;
+import com.redditclone.moderation.dto.ModNoteView;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.community.CommunityModerator;
@@ -179,8 +180,87 @@ public class ModerationService {
     }
 
     public List<ModerationAction> listModerationActions(UUID actorId, UUID communityId) {
+        return listModerationActions(actorId, communityId, null, null, null, null, null);
+    }
+
+    // The mod log with optional filters (action type, acting moderator, target type/id) and `before` paging.
+    // A null `before` means "from the newest entry", expressed as a far-future bound so the query keeps a single
+    // typed timestamp parameter instead of a nullable one.
+    public List<ModerationAction> listModerationActions(UUID actorId, UUID communityId, String action, UUID byActorId,
+                                                         String targetType, UUID targetId, Instant before) {
         communityService.requireAnyModPermission(actorId, communityId);
-        return actions.findByCommunityIdOrderByCreatedAtDesc(communityId, Pageable.ofSize(LIST_PAGE_SIZE));
+        Instant bound = before != null ? before : Instant.now().plusSeconds(86_400);
+        List<ModerationAction> page = actions.findFiltered(communityId, blankToEmpty(action), byActorId,
+                blankToEmpty(targetType), targetId, bound, Pageable.ofSize(LIST_PAGE_SIZE));
+        if (!page.isEmpty()) {
+            Map<UUID, String> names = authService.findUsernamesByIds(
+                    page.stream().map(ModerationAction::getActorId).collect(Collectors.toSet()));
+            page.forEach(a -> a.setActorUsername(names.get(a.getActorId())));
+        }
+        return page;
+    }
+
+    // "" (not null) means "no filter": an untyped null String parameter can't be type-resolved by Postgres.
+    private static String blankToEmpty(String s) {
+        return s == null || s.isBlank() ? "" : s.trim();
+    }
+
+    // ==================== Sticky / distinguished comments ====================
+
+    @Transactional
+    public void stickyComment(UUID actorId, UUID communityId, UUID commentId, boolean sticky) {
+        communityService.requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_POSTS);
+        commentService.setSticky(commentId, communityId, sticky);
+        auditWriter.logAction(communityId, actorId, sticky ? "sticky_comment" : "unsticky_comment", "comment", commentId, null);
+    }
+
+    @Transactional
+    public void distinguishComment(UUID actorId, UUID communityId, UUID commentId, boolean distinguished) {
+        communityService.requireAnyModPermission(actorId, communityId);
+        commentService.setDistinguished(actorId, commentId, communityId, distinguished);
+    }
+
+    // ==================== Mod notes ====================
+    // Private moderator-only context about a user within one community. Any moderator may read and add; only
+    // the note's author or someone who can manage moderators may delete.
+
+    public List<ModNoteView> listNotes(UUID actorId, UUID communityId, UUID userId) {
+        communityService.requireAnyModPermission(actorId, communityId);
+        record Row(UUID id, UUID authorId, String note, Instant createdAt) {
+        }
+        List<Row> rows = jdbc.query("""
+                SELECT id, author_id, note, created_at FROM mod_notes
+                WHERE community_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 100
+                """, (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getObject("author_id", UUID.class),
+                rs.getString("note"), rs.getTimestamp("created_at").toInstant()), communityId, userId);
+        Map<UUID, String> names = authService.findUsernamesByIds(rows.stream().map(Row::authorId).collect(Collectors.toSet()));
+        return rows.stream().map(r -> new ModNoteView(r.id(), userId, r.authorId(), names.get(r.authorId()), r.note(), r.createdAt())).toList();
+    }
+
+    @Transactional
+    public ModNoteView addNote(UUID actorId, UUID communityId, UUID userId, String note) {
+        communityService.requireAnyModPermission(actorId, communityId);
+        if (authService.findUsernamesByIds(java.util.Set.of(userId)).get(userId) == null) {
+            throw new NotFoundException("no such user");
+        }
+        UUID id = ids.nextId();
+        jdbc.update("INSERT INTO mod_notes (id, community_id, user_id, author_id, note) VALUES (?, ?, ?, ?, ?)",
+                id, communityId, userId, actorId, note.trim());
+        return listNotes(actorId, communityId, userId).stream().filter(n -> n.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public void deleteNote(UUID actorId, UUID communityId, UUID noteId) {
+        communityService.requireAnyModPermission(actorId, communityId);
+        List<UUID> authors = jdbc.query("SELECT author_id FROM mod_notes WHERE id = ? AND community_id = ?",
+                (rs, i) -> rs.getObject("author_id", UUID.class), noteId, communityId);
+        if (authors.isEmpty()) {
+            throw new NotFoundException("note not found");
+        }
+        if (!authors.get(0).equals(actorId)) {
+            communityService.requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_MODERATORS);
+        }
+        jdbc.update("DELETE FROM mod_notes WHERE id = ?", noteId);
     }
 
     @Transactional

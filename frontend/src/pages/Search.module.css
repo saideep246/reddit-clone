@@ -41,3 +41,38 @@
   color: var(--color-danger);
   margin: 0 0 var(--space-2);
 }
+
+.scopeNote {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.commentHit {
+  display: block;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.commentHit:hover {
+  border-color: var(--color-text-secondary);
+}
+
+.commentMeta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.commentBody {
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

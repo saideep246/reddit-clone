@@ -4,6 +4,8 @@ import { AutomodTab } from '../components/AutomodTab';
 import { BansTab } from '../components/BansTab';
 import { JoinRequestsTab } from '../components/JoinRequestsTab';
 import { CommunitySettingsTab } from '../components/CommunitySettingsTab';
+import { ModLogTab } from '../components/ModLogTab';
+import { ModNotesTab } from '../components/ModNotesTab';
 import { ModQueueTab } from '../components/ModQueueTab';
 import { SettingsTab } from '../components/SettingsTab';
 import { fetchCommunityAbout } from '../lib/communityApi';
@@ -17,7 +19,7 @@ import {
 import type { Community } from '../types/community';
 import styles from './ModerationDashboard.module.css';
 
-type Tab = 'queue' | 'bans' | 'join-requests' | 'automod' | 'settings';
+type Tab = 'queue' | 'bans' | 'join-requests' | 'automod' | 'settings' | 'notes' | 'log';
 
 export function ModerationDashboard() {
   const { communityName = '' } = useParams();
@@ -128,40 +130,58 @@ export function ModerationDashboard() {
         >
           Automod
         </button>
+                {canManageSettings && (
+                  <button
+                    type="button"
+                    className={`${styles.tab} ${activeTab === 'settings' ? styles.tabActive : ''}`}
+                    onClick={() => setTab('settings')}
+                  >
+                    Settings
+                  </button>
+                )}
 
-        {canManageSettings && (
-          <button
-            type="button"
-            className={`${styles.tab} ${activeTab === 'settings' ? styles.tabActive : ''}`}
-            onClick={() => setTab('settings')}
-          >
-            Settings
-          </button>
-        )}
-      </div>
+                <button
+                  type="button"
+                  className={`${styles.tab} ${activeTab === 'notes' ? styles.tabActive : ''}`}
+                  onClick={() => setTab('notes')}
+                >
+                  Notes
+                </button>
 
-      {activeTab === 'queue' && (
-        <ModQueueTab
-          communityName={communityName}
-          myPermissions={community.myPermissions}
-        />
-      )}
+                <button
+                  type="button"
+                  className={`${styles.tab} ${activeTab === 'log' ? styles.tabActive : ''}`}
+                  onClick={() => setTab('log')}
+                >
+                  Log
+                </button>
+              </div>
 
-      {activeTab === 'bans' && canSeeBans && (
-        <BansTab communityName={communityName} />
-      )}
+              {activeTab === 'queue' && (
+                <ModQueueTab
+                  communityName={communityName}
+                  myPermissions={community.myPermissions}
+                />
+              )}
 
-      {activeTab === 'join-requests' && canSeeJoinRequests && (
-        <JoinRequestsTab communityName={communityName} />
-      )}
+              {activeTab === 'bans' && canSeeBans && (
+                <BansTab communityName={communityName} />
+              )}
 
-      {activeTab === 'automod' && (
-        <AutomodTab
-          communityName={communityName}
-          canManage={canManageAutomod}
-        />
-      )}
+              {activeTab === 'join-requests' && canSeeJoinRequests && (
+                <JoinRequestsTab communityName={communityName} />
+              )}
 
+              {activeTab === 'automod' && (
+                <AutomodTab
+                  communityName={communityName}
+                  canManage={canManageAutomod}
+                />
+              )}
+
+              {activeTab === 'notes' && <ModNotesTab communityName={communityName} />}
+
+              {activeTab === 'log' && <ModLogTab communityName={communityName} />}
       {activeTab === 'settings' && (
         <CommunitySettingsTab
           community={community}

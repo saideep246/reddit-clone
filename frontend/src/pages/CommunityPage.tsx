@@ -1,4 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { CommunitySidebar } from '../components/CommunitySidebar';
 import { PostCard } from '../components/PostCard';
@@ -18,6 +19,14 @@ export function CommunityPage() {
   const { user } = useAuth();
   const { community, rules, pinned, loading, error, actionError, join, leave, requestJoin, applyPinnedVote } = useCommunity(communityName);
   const feed = useFeed(communityName, sort, period);
+  const navigate = useNavigate();
+  const [searchText, setSearchText] = useState('');
+
+  const searchHere = (e: FormEvent) => {
+    e.preventDefault();
+    const q = searchText.trim();
+    if (q) navigate(`/search?q=${encodeURIComponent(q)}&community=${encodeURIComponent(communityName)}`);
+  };
 
   if (loading) {
     return <div className={styles.state}>Loading…</div>;
@@ -29,6 +38,15 @@ export function CommunityPage() {
   return (
     <div className={styles.layout}>
       <div className={styles.main}>
+        <form onSubmit={searchHere} className={styles.communitySearch}>
+          <input
+            className={styles.communitySearchInput}
+            type="search"
+            placeholder={`Search r/${communityName}`}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+        </form>
         {user && (
           <Link to={`/r/${communityName}/submit`} className={styles.createPostButton}>
             Create Post

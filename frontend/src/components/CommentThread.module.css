@@ -88,3 +88,28 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+.modBadge,
+.stickyBadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.modBadge {
+  background: #1a7f37;
+  color: #fff;
+}
+
+.stickyBadge {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.replyToggle + .replyToggle {
+  margin-left: var(--space-2);
+}

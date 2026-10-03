@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { decodeHtmlEntities } from '../lib/html';
 import { useSettings } from '../settings/SettingsContext';
+import { CrosspostEmbed } from './CrosspostEmbed';
+import { PollBlock } from './PollBlock';
 import type { Post } from '../types/post';
 import styles from './PostMedia.module.css';
 
@@ -60,6 +62,12 @@ function renderContent(post: Post, fullBody: boolean) {
         )}
       </div>
     );
+  }
+  if (post.kind === 'poll') {
+    return <PollBlock post={post} interactive={fullBody} />;
+  }
+  if (post.kind === 'crosspost') {
+    return <CrosspostEmbed parent={post.crosspostParent} />;
   }
   if (post.kind === 'link' && post.url) {
     return <div className={styles.domain}>({domainOf(post.url)})</div>;

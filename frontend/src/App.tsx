@@ -12,6 +12,7 @@ import { ModerationDashboard } from './pages/ModerationDashboard';
 import { NotificationsInbox } from './pages/NotificationsInbox';
 import { PostDetail } from './pages/PostDetail';
 import { PostSubmit } from './pages/PostSubmit';
+import { ScheduledPosts } from './pages/ScheduledPosts';
 import { Register } from './pages/Register';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
@@ -45,6 +46,7 @@ function App() {
         <Route path="/search" element={<Search />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/submit" element={<PostSubmit />} />
+        <Route path="/scheduled" element={<ScheduledPosts />} />
         <Route path="/user/:username" element={<UserProfile />} />
         <Route path="/user/:username/followers" element={<UserConnections mode="followers" />} />
         <Route path="/user/:username/following" element={<UserConnections mode="following" />} />

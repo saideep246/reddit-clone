@@ -158,6 +158,9 @@ public class CommunityService {
     @Transactional
     public void issueBan(UUID issuerId, UUID communityId, UUID targetUserId, String reason, Instant expiresAt) {
         requirePermission(issuerId, communityId, CommunityModerator.PERM_BAN_USERS);
+        if (expiresAt != null && !expiresAt.isAfter(Instant.now())) {
+            throw new BadRequestException("a ban's expiry must be in the future");
+        }
         Ban ban = new Ban(communityId, targetUserId, issuerId, reason, expiresAt);
         // Re-banning the same user re-issues this row via JPA merge (app-assigned id, never persist()) —
         // preserve the original created_at instead of letting merge overwrite it with Instant.now().
@@ -180,7 +183,9 @@ public class CommunityService {
     // as every other listing in this codebase.
     public List<Ban> listBans(UUID actorId, UUID communityId) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_BAN_USERS);
-        List<Ban> banList = bans.findByCommunityIdOrderByCreatedAtDesc(communityId, Pageable.ofSize(LIST_PAGE_SIZE));
+        // Expired-but-not-yet-swept rows (see job.BanExpiryJob) no longer apply, so they aren't listed.
+        List<Ban> banList = bans.findByCommunityIdOrderByCreatedAtDesc(communityId, Pageable.ofSize(LIST_PAGE_SIZE)).stream()
+                .filter(this::isActive).toList();
         if (banList.isEmpty()) {
             return banList;
         }
@@ -579,6 +584,12 @@ public class CommunityService {
     // No-op for public. Restricted requires a moderator or an approved submitter. Private requires a
     // moderator or membership — the same check requireViewAccess does, since an approved private member
     // already has posting rights with no separate "approved submitter" concept layered on top.
+    // Just the access type ("public" | "restricted" | "private"), for callers in other modules that must not
+    // touch the Community entity's repository directly.
+    public String findTypeById(UUID communityId) {
+        return communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community")).getType();
+    }
+
     public void requirePostAccess(UUID authorId, UUID communityId) {
         Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
         if (moderators.existsByCommunityIdAndUserId(communityId, authorId)) {

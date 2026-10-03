@@ -39,6 +39,10 @@ public class ModerationAction {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    // Attached by ModerationService.listModerationActions in one batched lookup, never persisted.
+    @jakarta.persistence.Transient
+    private String actorUsername;
+
     public UUID getId() {
         return id;
     }
@@ -65,6 +69,14 @@ public class ModerationAction {
 
     public String getReason() {
         return reason;
+    }
+
+    public String getActorUsername() {
+        return actorUsername;
+    }
+
+    public void setActorUsername(String actorUsername) {
+        this.actorUsername = actorUsername;
     }
 
     public Instant getCreatedAt() {

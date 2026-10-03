@@ -11,6 +11,8 @@ import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
 import com.redditclone.post.dto.CreatePostRequest;
 import com.redditclone.post.dto.EditPostRequest;
+import com.redditclone.post.dto.PollVoteRequest;
+import com.redditclone.post.dto.PollView;
 import com.redditclone.post.dto.PostEditView;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -68,6 +70,17 @@ public class PostController {
                           @PathVariable UUID postId, @Valid @RequestBody EditPostRequest req) {
         UUID communityId = communityService.findByName(communityName).getId();
         return postService.edit(userId, communityId, postId, req.body(), req.title(), req.url());
+    }
+
+    @GetMapping("/posts/{postId}/poll")
+    public PollView poll(@AuthenticationPrincipal UUID viewerId, @PathVariable String communityName, @PathVariable UUID postId) {
+        return postService.getPoll(viewerId, communityService.findByName(communityName).getId(), postId);
+    }
+
+    @PostMapping("/posts/{postId}/poll/vote")
+    public PollView votePoll(@AuthenticationPrincipal UUID userId, @PathVariable String communityName,
+                              @PathVariable UUID postId, @Valid @RequestBody PollVoteRequest req) {
+        return postService.votePoll(userId, communityService.findByName(communityName).getId(), postId, req.optionId());
     }
 
     @GetMapping("/posts/{postId}/history")

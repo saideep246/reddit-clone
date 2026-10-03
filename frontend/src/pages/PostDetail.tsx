@@ -15,7 +15,7 @@ import { decodeHtmlEntities } from '../lib/html';
 import { fetchPostHistory } from '../lib/postApi';
 import { timeAgo } from '../lib/time';
 import type { CommentSortType } from '../types/comment';
-import { hasPermission, PERM_REMOVE_CONTENT } from '../types/moderation';
+import { hasPermission, PERM_MANAGE_POSTS, PERM_REMOVE_CONTENT } from '../types/moderation';
 import styles from './PostDetail.module.css';
 
 export function PostDetail() {
@@ -26,6 +26,7 @@ export function PostDetail() {
   const { user } = useAuth();
   const [editingPost, setEditingPost] = useState(false);
   const [canModerate, setCanModerate] = useState(false);
+  const [myPerms, setMyPerms] = useState<number | null>(null);
   const [modDeleting, setModDeleting] = useState(false);
   const [editingMeta, setEditingMeta] = useState(false);
   const [metaTitle, setMetaTitle] = useState('');
@@ -47,6 +48,7 @@ export function PostDetail() {
     applyCommentVote,
     submitComment,
     loadMoreReplies,
+    reloadComments,
     editPostBody,
     editPostMeta,
     removePost,
@@ -60,7 +62,9 @@ export function PostDetail() {
     let cancelled = false;
     fetchCommunityAbout(communityName)
       .then((c) => {
-        if (!cancelled) setCanModerate(hasPermission(c.myPermissions, PERM_REMOVE_CONTENT));
+        if (cancelled) return;
+        setCanModerate(hasPermission(c.myPermissions, PERM_REMOVE_CONTENT));
+        setMyPerms(c.isModerator ? (c.myPermissions ?? 0) : null);
       })
       .catch(() => {});
     return () => {
@@ -226,6 +230,15 @@ export function PostDetail() {
             />
           )}
 
+          {user && !post.deleted && !post.removed && (
+            <Link
+              className={styles.linkButton}
+              to={`/submit?crosspost=${post.crosspostOf ?? post.id}&from=${post.crosspostParent?.communityName ?? post.communityName}&title=${encodeURIComponent(post.crosspostParent?.title ?? post.title)}`}
+            >
+              Crosspost
+            </Link>
+          )}
+
           {user &&
             user.id === post.authorId &&
             !editingMeta &&
@@ -270,6 +283,10 @@ export function PostDetail() {
               onDelete={removeComment}
               readOnly={post.deleted}
               canModerate={canModerate}
+              communityName={communityName}
+              isModerator={myPerms !== null}
+              canSticky={myPerms !== null && hasPermission(myPerms, PERM_MANAGE_POSTS)}
+              onModChanged={reloadComments}
             />
           ))
         )}

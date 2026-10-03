@@ -68,6 +68,13 @@ public class Comment {
     @Column(name = "child_count", nullable = false)
     private int childCount = 0;
 
+    // Moderator-pinned top-level comment, shown first in its thread (see CommentService.findCommentTree).
+    @Column(nullable = false)
+    private boolean sticky = false;
+
+    // "moderator" when a moderator posted this in an official capacity, else null.
+    private String distinguished;
+
     @Column(nullable = false)
     private boolean removed;
 
@@ -171,6 +178,22 @@ public class Comment {
 
     public double getControversialRank() {
         return controversialRank;
+    }
+
+    public boolean isSticky() {
+        return sticky;
+    }
+
+    public void setSticky(boolean sticky) {
+        this.sticky = sticky;
+    }
+
+    public String getDistinguished() {
+        return distinguished;
+    }
+
+    public void setDistinguished(String distinguished) {
+        this.distinguished = distinguished;
     }
 
     public int getChildCount() {

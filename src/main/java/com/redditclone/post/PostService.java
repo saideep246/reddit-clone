@@ -17,6 +17,8 @@ import com.redditclone.media.Media;
 import com.redditclone.media.MediaService;
 import com.redditclone.media.MediaView;
 import com.redditclone.post.dto.CreatePostRequest;
+import com.redditclone.post.dto.CrosspostParent;
+import com.redditclone.post.dto.PollView;
 import com.redditclone.post.dto.PostEditView;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
@@ -114,6 +116,7 @@ public class PostService {
             if (req.flairId() != null) {
                 validatedFlair = communityService.requireFlairUsable(communityId, req.flairId(), "post");
             }
+            UUID crosspostRoot = "crosspost".equals(req.kind()) ? resolveCrosspostRoot(authorId, req.crosspostOf()) : null;
             String title = sanitizer.sanitize(req.title());
             String body = sanitizer.sanitize(req.body());
             Post p = new Post();
@@ -124,6 +127,7 @@ public class PostService {
             p.setTitle(title);
             p.setBody(body);
             p.setUrl(req.url());
+            p.setCrosspostOf(crosspostRoot);
             p.setMediaId(req.mediaId());
             p.setFlairId(req.flairId());
             p.setNsfw(req.nsfw());
@@ -139,7 +143,15 @@ public class PostService {
             if (communityService.evaluateAutomod(communityId, "post", newId, title, body, authorKarma)) {
                 p.setRemoved(true);
             }
-            posts.save(p);
+            // Polls insert their option rows with plain JDBC below, so the post row must already exist (flushed).
+            if ("poll".equals(req.kind())) {
+                posts.saveAndFlush(p);
+            } else {
+                posts.save(p);
+            }
+            if ("poll".equals(req.kind())) {
+                insertPoll(p.getId(), req.pollOptions(), req.pollDays() == null ? 3 : req.pollDays());
+            }
             if (validatedGalleryMedia != null) {
                 List<PostMedia> rows = new ArrayList<>();
                 for (short i = 0; i < validatedGalleryMedia.size(); i++) {
@@ -159,12 +171,12 @@ public class PostService {
                 // Reuse the row requireOwnedAndUsable already fetched instead of a second findAllById
                 // round trip a moment later via attachMedia() for a row that can't have changed since.
                 p.setMedia(mediaService.toMediaView(validatedMedia));
-                return attachCommunityName(attachAuthorUsername(p));
+                return withExtras(attachCommunityName(attachAuthorUsername(p)));
             }
             if (validatedGalleryMedia != null) {
-                return attachCommunityName(attachAuthorUsername(p));
+                return withExtras(attachCommunityName(attachAuthorUsername(p)));
             }
-            return attachCommunityName(attachAuthorUsername(attachMedia(p)));
+            return withExtras(attachCommunityName(attachAuthorUsername(attachMedia(p))));
         } catch (RuntimeException e) {
             // The Redis claim above is outside this method's @Transactional boundary, so rolling back the
             // DB insert (e.g. on a ForbiddenException from requireNotBanned) doesn't undo it — release the
@@ -606,11 +618,165 @@ public class PostService {
     }
 
     private List<Post> attachAll(List<Post> page) {
-        return attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(page)))));
+        return attachCrosspostParent(attachPoll(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(page)))))));
     }
 
     private Post attachAll(Post p) {
-        return attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(p)))));
+        attachCrosspostParent(attachPoll(List.of(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(p))))))));
+        return p;
+    }
+
+    // Poll and crosspost-parent data for a single freshly built post (the list path does this in attachAll).
+    private Post withExtras(Post p) {
+        attachCrosspostParent(attachPoll(List.of(p)));
+        return p;
+    }
+
+    // ==================== Polls ====================
+
+    private static final int POLL_OPTION_MAX = 6;
+
+    private void insertPoll(UUID postId, List<String> options, int days) {
+        jdbc.update("INSERT INTO polls (post_id, ends_at) VALUES (:postId, :endsAt)",
+                new MapSqlParameterSource().addValue("postId", postId)
+                        .addValue("endsAt", Timestamp.from(Instant.now().plus(Duration.ofDays(days)))));
+        short position = 0;
+        for (String text : options.subList(0, Math.min(options.size(), POLL_OPTION_MAX))) {
+            jdbc.update("INSERT INTO poll_options (id, post_id, text, position) VALUES (:id, :postId, :text, :position)",
+                    new MapSqlParameterSource().addValue("id", ids.nextId()).addValue("postId", postId)
+                            .addValue("text", sanitizer.sanitize(text.trim())).addValue("position", position++));
+        }
+    }
+
+    // Batched, never one query per poll: one options query + one polls query per page of posts.
+    private List<Post> attachPoll(List<Post> page) {
+        List<UUID> pollIds = page.stream().filter(p -> "poll".equals(p.getKind())).map(Post::getId).toList();
+        if (pollIds.isEmpty()) {
+            return page;
+        }
+        Map<UUID, Instant> endsAt = new HashMap<>();
+        jdbc.query("SELECT post_id, ends_at FROM polls WHERE post_id IN (:ids)", new MapSqlParameterSource("ids", pollIds),
+                rs -> {
+                    endsAt.put(rs.getObject("post_id", UUID.class), rs.getTimestamp("ends_at").toInstant());
+                });
+        Map<UUID, List<PollView.PollOptionView>> options = new HashMap<>();
+        jdbc.query("SELECT id, post_id, text, votes FROM poll_options WHERE post_id IN (:ids) ORDER BY post_id, position",
+                new MapSqlParameterSource("ids", pollIds), rs -> {
+                    options.computeIfAbsent(rs.getObject("post_id", UUID.class), k -> new ArrayList<>())
+                            .add(new PollView.PollOptionView(rs.getObject("id", UUID.class), rs.getString("text"), rs.getInt("votes")));
+                });
+        Instant now = Instant.now();
+        for (Post p : page) {
+            List<PollView.PollOptionView> opts = options.get(p.getId());
+            Instant ends = endsAt.get(p.getId());
+            if (opts != null && ends != null) {
+                p.setPoll(new PollView(opts, opts.stream().mapToInt(PollView.PollOptionView::votes).sum(), ends, now.isAfter(ends), null));
+            }
+        }
+        return page;
+    }
+
+    // The viewer's own state for one poll: same payload as the embedded poll plus which option they picked.
+    public PollView getPoll(UUID viewerId, UUID communityId, UUID postId) {
+        Post p = requirePollPost(communityId, postId);
+        communityService.requireViewAccess(viewerId, communityId);
+        attachPoll(List.of(p));
+        PollView base = p.getPoll();
+        if (base == null) {
+            throw new NotFoundException("poll not found");
+        }
+        UUID mine = viewerId == null ? null : jdbc.query("SELECT option_id FROM poll_votes WHERE post_id = :p AND user_id = :u",
+                new MapSqlParameterSource().addValue("p", postId).addValue("u", viewerId),
+                rs -> rs.next() ? rs.getObject("option_id", UUID.class) : null);
+        return new PollView(base.options(), base.totalVotes(), base.endsAt(), base.ended(), mine);
+    }
+
+    @Transactional
+    public PollView votePoll(UUID userId, UUID communityId, UUID postId, UUID optionId) {
+        Post p = requirePollPost(communityId, postId);
+        communityService.requireViewAccess(userId, communityId);
+        communityService.requireNotBanned(userId, communityId);
+        attachPoll(List.of(p));
+        if (p.getPoll() == null) {
+            throw new NotFoundException("poll not found");
+        }
+        if (p.getPoll().ended()) {
+            throw new BadRequestException("this poll has ended");
+        }
+        boolean validOption = p.getPoll().options().stream().anyMatch(o -> o.id().equals(optionId));
+        if (!validOption) {
+            throw new BadRequestException("that option does not belong to this poll");
+        }
+        int inserted = jdbc.update("""
+                INSERT INTO poll_votes (post_id, user_id, option_id) VALUES (:p, :u, :o)
+                ON CONFLICT (post_id, user_id) DO NOTHING
+                """, new MapSqlParameterSource().addValue("p", postId).addValue("u", userId).addValue("o", optionId));
+        if (inserted == 0) {
+            throw new BadRequestException("you have already voted in this poll");
+        }
+        jdbc.update("UPDATE poll_options SET votes = votes + 1 WHERE id = :o", new MapSqlParameterSource("o", optionId));
+        return getPoll(userId, communityId, postId);
+    }
+
+    private Post requirePollPost(UUID communityId, UUID postId) {
+        Post p = findById(postId);
+        if (!p.getCommunityId().equals(communityId) || p.isRemoved() || p.isDeleted() || !"poll".equals(p.getKind())) {
+            throw new NotFoundException("poll not found");
+        }
+        return p;
+    }
+
+    // ==================== Crossposts ====================
+
+    // Resolves the ORIGINAL post (a crosspost of a crosspost points at the same root), and checks the author
+    // could actually see it: live, not in a private community (a crosspost would leak it to the target's
+    // audience), and the author has view access to its community.
+    private UUID resolveCrosspostRoot(UUID authorId, UUID crosspostOf) {
+        Post original = findById(crosspostOf);
+        if (original.getCrosspostOf() != null) {
+            original = findById(original.getCrosspostOf());
+        }
+        if (original.isRemoved() || original.isDeleted()) {
+            throw new NotFoundException("post not found");
+        }
+        communityService.requireViewAccess(authorId, original.getCommunityId());
+        if ("private".equals(communityService.findTypeById(original.getCommunityId()))) {
+            throw new BadRequestException("posts from private communities can't be crossposted");
+        }
+        return original.getId();
+    }
+
+    private List<Post> attachCrosspostParent(List<Post> page) {
+        Set<UUID> parentIds = new HashSet<>();
+        for (Post p : page) {
+            if (p.getCrosspostOf() != null) {
+                parentIds.add(p.getCrosspostOf());
+            }
+        }
+        if (parentIds.isEmpty()) {
+            return page;
+        }
+        Map<UUID, CrosspostParent> parents = new HashMap<>();
+        jdbc.query("""
+                SELECT p.id, p.title, p.kind, p.body, p.url, p.removed, p.deleted, u.username, c.name, c.type
+                FROM posts p JOIN users u ON u.id = p.author_id JOIN communities c ON c.id = p.community_id
+                WHERE p.id IN (:ids)
+                """, new MapSqlParameterSource("ids", parentIds), rs -> {
+            UUID id = rs.getObject("id", UUID.class);
+            boolean available = !rs.getBoolean("removed") && !rs.getBoolean("deleted") && !"private".equals(rs.getString("type"));
+            String body = rs.getString("body");
+            parents.put(id, available
+                    ? new CrosspostParent(id, true, rs.getString("title"), rs.getString("kind"),
+                            body == null || body.length() <= 300 ? body : body.substring(0, 300) + "…",
+                            rs.getString("url"), rs.getString("username"), rs.getString("name"))
+                    : CrosspostParent.unavailable(id));
+        });
+        for (Post p : page) {
+            if (p.getCrosspostOf() != null) {
+                p.setCrosspostParent(parents.getOrDefault(p.getCrosspostOf(), CrosspostParent.unavailable(p.getCrosspostOf())));
+            }
+        }
+        return page;
     }
 
     // ModerationController pushes the PERM_MANAGE_FLAIRS check down before calling this — no permission

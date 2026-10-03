@@ -11,6 +11,7 @@ export function BansTab({ communityName }: BansTabProps) {
   const { bans, loading, error, banByUsername, unban } = useBans(communityName);
   const [username, setUsername] = useState('');
   const [reason, setReason] = useState('');
+  const [days, setDays] = useState(0); // 0 = permanent
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,7 +21,8 @@ export function BansTab({ communityName }: BansTabProps) {
     if (!username.trim()) return;
     setSubmitting(true);
     try {
-      await banByUsername(username.trim(), reason.trim() || undefined, null);
+      const expiresAt = days > 0 ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
+      await banByUsername(username.trim(), reason.trim() || undefined, expiresAt);
       setUsername('');
       setReason('');
     } catch (err) {
@@ -45,6 +47,13 @@ export function BansTab({ communityName }: BansTabProps) {
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
+        <select className={styles.input} value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Ban duration">
+          <option value={0}>Permanent</option>
+          <option value={1}>1 day</option>
+          <option value={3}>3 days</option>
+          <option value={7}>7 days</option>
+          <option value={30}>30 days</option>
+        </select>
         <button type="submit" className={styles.submitButton} disabled={submitting || !username.trim()}>
           {submitting ? 'Banning…' : 'Issue ban'}
         </button>

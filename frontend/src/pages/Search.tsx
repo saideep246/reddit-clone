@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { CommunityCard } from '../components/CommunityCard';
 import { PostCard } from '../components/PostCard';
 import { UserResultCard } from '../components/UserResultCard';
+import { useCommentSearch } from '../hooks/useCommentSearch';
 import { useCommunitySearch } from '../hooks/useCommunitySearch';
 import { usePostSearch } from '../hooks/usePostSearch';
 import { useUserSearch } from '../hooks/useUserSearch';
+import { decodeHtmlEntities } from '../lib/html';
+import { timeAgo } from '../lib/time';
 import styles from './Search.module.css';
 
 export function Search() {
   const [searchParams] = useSearchParams();
   const urlQuery = searchParams.get('q') ?? '';
+  // ?community=<name> scopes post and comment search to one community (set by the community page's own box).
+  const scope = searchParams.get('community') || undefined;
   const [inputValue, setInputValue] = useState(urlQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(urlQuery);
 
@@ -27,7 +32,8 @@ export function Search() {
   }, [inputValue]);
 
   const query = debouncedQuery.trim();
-  const posts = usePostSearch(query);
+  const posts = usePostSearch(query, scope);
+  const commentHits = useCommentSearch(query, scope);
   const communities = useCommunitySearch(query);
   const users = useUserSearch(query);
 
@@ -41,6 +47,12 @@ export function Search() {
         onChange={(e) => setInputValue(e.target.value)}
         autoFocus
       />
+
+      {scope && (
+        <p className={styles.scopeNote}>
+          Searching in <strong>r/{scope}</strong> · <Link to={`/search?q=${encodeURIComponent(query)}`}>search all of Reddit</Link>
+        </p>
+      )}
 
       {!query ? (
         <div className={styles.state}>Type something to search.</div>
@@ -59,6 +71,27 @@ export function Search() {
             )}
           </section>
 
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Comments</h2>
+            {commentHits.loading ? (
+              <div className={styles.state}>Loading…</div>
+            ) : commentHits.error ? (
+              <div className={styles.state}>{commentHits.error}</div>
+            ) : commentHits.comments.length === 0 ? (
+              <div className={styles.state}>No comments found for "{query}".</div>
+            ) : (
+              commentHits.comments.map((c) => (
+                <Link key={c.id} className={styles.commentHit} to={`/r/${c.communityName}/comments/${c.postId}`}>
+                  <div className={styles.commentMeta}>
+                    u/{c.authorUsername ?? '[deleted]'} on “{decodeHtmlEntities(c.postTitle ?? '')}” · r/{c.communityName} · {timeAgo(c.createdAt)}
+                  </div>
+                  <div className={styles.commentBody}>{decodeHtmlEntities(c.body)}</div>
+                </Link>
+              ))
+            )}
+          </section>
+
+          {!scope && (
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Communities</h2>
             {communities.loading ? (
@@ -79,7 +112,9 @@ export function Search() {
               ))
             )}
           </section>
+          )}
 
+          {!scope && (
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>People</h2>
             {users.actionError && <p className={styles.actionError}>{users.actionError}</p>}
@@ -95,6 +130,7 @@ export function Search() {
               ))
             )}
           </section>
+          )}
         </>
       )}
     </div>

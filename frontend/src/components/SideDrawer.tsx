@@ -72,6 +72,7 @@ export function SideDrawer({ open, onClose }: SideDrawerProps) {
         { to: '/chat', label: 'Chat', icon: ICONS.chat, active: path.startsWith('/chat') },
         { to: '/notifications', label: 'Notifications', icon: ICONS.bell, active: path === '/notifications' },
         { to: `/user/${user.username}`, label: 'Profile', icon: ICONS.user, active: path === `/user/${user.username}` },
+        { to: '/scheduled', label: 'Scheduled posts', icon: ICONS.new, active: path === '/scheduled' },
         { to: '/settings', label: 'Settings', icon: ICONS.settings, active: path === '/settings' },
       ]
     : [];

@@ -16,6 +16,8 @@ import com.redditclone.moderation.dto.AutomodRuleRequest;
 import com.redditclone.moderation.dto.BanRequest;
 import com.redditclone.moderation.dto.FlairRequest;
 import com.redditclone.moderation.dto.ModMailRequest;
+import com.redditclone.moderation.dto.ModNoteRequest;
+import com.redditclone.moderation.dto.ModNoteView;
 import com.redditclone.moderation.dto.MuteRequest;
 import com.redditclone.moderation.dto.RemoveRequest;
 import com.redditclone.moderation.dto.ReportRequest;
@@ -33,8 +35,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -67,9 +71,33 @@ public class ModerationController {
         return moderation.listModQueue(userId, communityId(name));
     }
 
+    // Optional filters: action (e.g. remove_post, ban), actorId (the acting moderator), targetType, targetId;
+    // `before` (ISO instant, the createdAt of the last row seen) pages backwards through older entries.
     @GetMapping("/r/{name}/mod/actions")
-    public List<ModerationAction> actions(@AuthenticationPrincipal UUID userId, @PathVariable String name) {
-        return moderation.listModerationActions(userId, communityId(name));
+    public List<ModerationAction> actions(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                                           @RequestParam(required = false) String action,
+                                           @RequestParam(required = false) UUID actorId,
+                                           @RequestParam(required = false) String targetType,
+                                           @RequestParam(required = false) UUID targetId,
+                                           @RequestParam(required = false) Instant before) {
+        return moderation.listModerationActions(userId, communityId(name), action, actorId, targetType, targetId, before);
+    }
+
+    @GetMapping("/r/{name}/mod/notes")
+    public List<ModNoteView> notes(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                                    @RequestParam("userId") UUID subjectId) {
+        return moderation.listNotes(userId, communityId(name), subjectId);
+    }
+
+    @PostMapping("/r/{name}/mod/notes")
+    public ModNoteView addNote(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                                @Valid @RequestBody ModNoteRequest req) {
+        return moderation.addNote(userId, communityId(name), req.userId(), req.note());
+    }
+
+    @DeleteMapping("/r/{name}/mod/notes/{noteId}")
+    public void deleteNote(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID noteId) {
+        moderation.deleteNote(userId, communityId(name), noteId);
     }
 
     @PostMapping("/r/{name}/mod/reports/{reportId}/resolve")
@@ -203,6 +231,26 @@ public class ModerationController {
         UUID communityId = communityId(name);
         communityService.requirePermission(userId, communityId, CommunityModerator.PERM_MANAGE_FLAIRS);
         postService.setFlair(postId, communityId, req.flairId());
+    }
+
+    @PostMapping("/r/{name}/mod/comments/{commentId}/sticky")
+    public void stickyComment(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID commentId) {
+        moderation.stickyComment(userId, communityId(name), commentId, true);
+    }
+
+    @DeleteMapping("/r/{name}/mod/comments/{commentId}/sticky")
+    public void unstickyComment(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID commentId) {
+        moderation.stickyComment(userId, communityId(name), commentId, false);
+    }
+
+    @PostMapping("/r/{name}/mod/comments/{commentId}/distinguish")
+    public void distinguishComment(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID commentId) {
+        moderation.distinguishComment(userId, communityId(name), commentId, true);
+    }
+
+    @DeleteMapping("/r/{name}/mod/comments/{commentId}/distinguish")
+    public void undistinguishComment(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID commentId) {
+        moderation.distinguishComment(userId, communityId(name), commentId, false);
     }
 
     @PostMapping("/r/{name}/mod/posts/{postId}/pin")

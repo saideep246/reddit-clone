@@ -3,6 +3,7 @@ package com.redditclone.comment;
 import com.redditclone.auth.AuthService;
 import com.redditclone.block.BlockService;
 import com.redditclone.comment.dto.CommentEditView;
+import com.redditclone.comment.dto.CommentSearchResult;
 import com.redditclone.comment.dto.CommentView;
 import com.redditclone.comment.dto.UserCommentView;
 import com.redditclone.common.KarmaEvent;
@@ -208,7 +209,16 @@ public class CommentService {
     // children actually made it into this bounded set (CommentView.childCount vs .replies.size(), checked
     // client-side) gets a "N more replies" affordance resolved via findMoreChildren below.
     public Listing<CommentView> findCommentTree(UUID postId, UUID viewerId, String sort, String after) {
-        List<Comment> roots = findTopLevel(postId, viewerId, sort, after);
+        List<Comment> rawRoots = findTopLevel(postId, viewerId, sort, after);
+        // Sticky comments lead the first page regardless of sort, and are dropped from the sorted page so they
+        // never appear twice. The paging cursor is still computed from the raw (unfiltered) page below.
+        List<Comment> stickies = comments.findByPostIdAndStickyTrueAndRemovedFalseAndDeletedFalseOrderByCreatedAtAsc(postId);
+        Set<UUID> stickyIds = stickies.stream().map(Comment::getId).collect(Collectors.toSet());
+        List<Comment> roots = new ArrayList<>();
+        if (after == null || after.isBlank()) {
+            roots.addAll(stickies);
+        }
+        rawRoots.stream().filter(c -> !stickyIds.contains(c.getId())).forEach(roots::add);
         if (roots.isEmpty()) {
             return Listing.of(List.of(), null);
         }
@@ -227,8 +237,53 @@ public class CommentService {
         Comparator<Comment> comparator = comparatorFor(sort);
         List<CommentView> views = roots.stream().map(r -> toViewRecursive(r, childrenByParent, comparator, sort)).toList();
         List<Thing<CommentView>> children = views.stream().map(v -> new Thing<>(COMMENT_KIND, v)).toList();
-        String next = roots.size() < TOP_LEVEL_PAGE_SIZE ? null : encodeCommentCursor(sort, roots.getLast());
+        String next = rawRoots.size() < TOP_LEVEL_PAGE_SIZE ? null : encodeCommentCursor(sort, rawRoots.getLast());
         return Listing.of(children, next);
+    }
+
+    // At most this many sticky comments per post.
+    private static final int MAX_STICKY_COMMENTS = 2;
+
+    // Caller (ModerationService) has already checked the moderator permission. Only live top-level comments
+    // can be stickied, and the comment must belong to the named community's post.
+    @Transactional
+    public void setSticky(UUID commentId, UUID communityId, boolean sticky) {
+        Comment c = findById(commentId);
+        requireInCommunity(c, communityId);
+        if (sticky) {
+            if (c.getParentId() != null) {
+                throw new BadRequestException("only top-level comments can be stickied");
+            }
+            if (c.isRemoved() || c.isDeleted()) {
+                throw new BadRequestException("cannot sticky a removed or deleted comment");
+            }
+            if (!c.isSticky() && comments.countByPostIdAndStickyTrue(c.getPostId()) >= MAX_STICKY_COMMENTS) {
+                throw new BadRequestException("this post already has the maximum number of sticky comments");
+            }
+        }
+        c.setSticky(sticky);
+        comments.save(c);
+    }
+
+    // A moderator distinguishes (or un-distinguishes) their OWN comment; nobody can distinguish someone else's.
+    @Transactional
+    public void setDistinguished(UUID actorId, UUID commentId, UUID communityId, boolean distinguished) {
+        Comment c = findById(commentId);
+        requireInCommunity(c, communityId);
+        if (!c.getAuthorId().equals(actorId)) {
+            throw new ForbiddenException("you can only distinguish your own comments");
+        }
+        if (c.isRemoved() || c.isDeleted()) {
+            throw new BadRequestException("cannot distinguish a removed or deleted comment");
+        }
+        c.setDistinguished(distinguished ? "moderator" : null);
+        comments.save(c);
+    }
+
+    private void requireInCommunity(Comment c, UUID communityId) {
+        if (!postService.findById(c.getPostId()).getCommunityId().equals(communityId)) {
+            throw new NotFoundException("comment not found");
+        }
     }
 
     // GET /api/morechildren — the next page of one specific comment's *direct* children only (not deeper),
@@ -431,6 +486,31 @@ public class CommentService {
             String postTitle = post != null ? post.getTitle() : null;
             String communityName = post != null ? communityNames.get(post.getCommunityId()) : null;
             return new UserCommentView(c.getId(), c.getPostId(), postTitle, communityName, c.getParentId(),
+                    c.getBody(), c.getScore(), c.getCreatedAt());
+        }).toList();
+    }
+
+    // Ranked full-text search over comment bodies — a single capped page, same "ts_rank isn't a stable keyset
+    // sort key" reasoning as PostService.search. communityId == null searches sitewide.
+    public List<CommentSearchResult> search(UUID communityId, String query, UUID viewerId) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        List<UUID> rankedIds = comments.searchIds(communityId, query.trim(), viewerId);
+        if (rankedIds.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Comment> byId = comments.findAllById(rankedIds).stream().collect(Collectors.toMap(Comment::getId, c -> c));
+        List<Comment> ordered = rankedIds.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
+        attachAuthorUsernames(ordered);
+        Map<UUID, Post> postsById = postService.findAllByIds(ordered.stream().map(Comment::getPostId).collect(Collectors.toSet()))
+                .stream().collect(Collectors.toMap(Post::getId, p -> p));
+        Map<UUID, String> communityNames = communityService.findNamesByIds(
+                postsById.values().stream().map(Post::getCommunityId).collect(Collectors.toSet()));
+        return ordered.stream().map(c -> {
+            Post post = postsById.get(c.getPostId());
+            return new CommentSearchResult(c.getId(), c.getPostId(), post == null ? null : post.getTitle(),
+                    post == null ? null : communityNames.get(post.getCommunityId()), c.getAuthorUsername(),
                     c.getBody(), c.getScore(), c.getCreatedAt());
         }).toList();
     }

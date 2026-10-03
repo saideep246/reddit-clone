@@ -28,9 +28,25 @@ export async function fetchMyPostVotes(postIds: string[]): Promise<Record<string
 // Not paginated — GET /r/all/search returns a single capped page server-side, same "relevance ranking
 // isn't a stable keyset sort key" reasoning as the per-community search this reuses the "all" pseudo-
 // community convention from (see fetchFeedPage's own comment).
-export async function searchAllPosts(query: string): Promise<Post[]> {
-  const listing = (await api.get(`/r/all/search?q=${encodeURIComponent(query)}`)) as Listing<Post>;
+// `community` scopes the search to one community instead of sitewide ("all").
+export async function searchAllPosts(query: string, community = 'all'): Promise<Post[]> {
+  const listing = (await api.get(`/r/${community}/search?q=${encodeURIComponent(query)}`)) as Listing<Post>;
   return listing.data.children.map((c) => c.data);
+}
+
+export interface CommentSearchResult {
+  id: string;
+  postId: string;
+  postTitle: string | null;
+  communityName: string | null;
+  authorUsername: string | null;
+  body: string;
+  score: number;
+  createdAt: string;
+}
+
+export function searchComments(query: string, community = 'all'): Promise<CommentSearchResult[]> {
+  return api.get(`/r/${community}/search/comments?q=${encodeURIComponent(query)}`) as Promise<CommentSearchResult[]>;
 }
 
 export function castVote(targetType: 'post' | 'comment', targetId: string, dir: 1 | -1): Promise<unknown> {

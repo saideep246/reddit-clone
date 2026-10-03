@@ -50,6 +50,7 @@ interface UsePostDetailResult {
   applyCommentVote: (commentId: string, dir: 1 | -1) => void;
   submitComment: (parentId: string | null, body: string) => Promise<void>;
   loadMoreReplies: (parentId: string) => void;
+  reloadComments: () => Promise<void>;
   editPostBody: (body: string) => Promise<void>;
   editPostMeta: (fields: PostEditFields) => Promise<void>;
   removePost: () => Promise<void>;
@@ -103,6 +104,22 @@ export function usePostDetail(communityName: string, postId: string, sort: Comme
   useEffect(() => {
     load();
   }, [load]);
+
+  // Refetches the comment tree in place (no full-page loading state) — used after a moderator action such as
+  // stickying a comment, which changes the order the server returns it in.
+  const reloadComments = useCallback(async () => {
+    const id = ++requestId.current;
+    try {
+      const data = await fetchPostWithComments(communityName, postId, sort);
+      if (id !== requestId.current) return;
+      const tree = await mergeMyVotes(data.comments.data.children.map((c) => c.data));
+      if (id !== requestId.current) return;
+      setComments(tree);
+      setAfter(data.comments.data.after);
+    } catch {
+      // Best effort: the previous tree stays on screen.
+    }
+  }, [communityName, postId, sort, mergeMyVotes]);
 
   // Real top-level comment pagination (feature 8) — appends the next page of root comments, same
   // "requestId guard + append, not replace" shape as useFeed.loadMore.
@@ -297,6 +314,7 @@ export function usePostDetail(communityName: string, postId: string, sort: Comme
     applyCommentVote,
     submitComment,
     loadMoreReplies,
+    reloadComments,
     editPostBody,
     editPostMeta,
     removePost,

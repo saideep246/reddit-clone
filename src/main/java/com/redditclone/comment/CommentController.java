@@ -1,6 +1,7 @@
 package com.redditclone.comment;
 
 import com.redditclone.comment.dto.CommentEditView;
+import com.redditclone.comment.dto.CommentSearchResult;
 import com.redditclone.comment.dto.CommentView;
 import com.redditclone.comment.dto.EditCommentRequest;
 import com.redditclone.comment.dto.PostWithCommentsView;
@@ -53,6 +54,18 @@ public class CommentController {
     public CommentView editComment(@AuthenticationPrincipal UUID userId, @PathVariable UUID commentId,
                                     @Valid @RequestBody EditCommentRequest req) {
         return commentService.editBody(userId, commentId, req.body());
+    }
+
+    // Public like the post search. `all` is the sitewide pseudo-community (see PostController.isAllFeed).
+    @GetMapping("/r/{communityName}/search/comments")
+    public List<CommentSearchResult> searchComments(@AuthenticationPrincipal UUID viewerId,
+                                                     @PathVariable String communityName, @RequestParam("q") String query) {
+        if ("all".equalsIgnoreCase(communityName)) {
+            return commentService.search(null, query, viewerId);
+        }
+        UUID communityId = communityService.findByName(communityName).getId();
+        communityService.requireViewAccess(viewerId, communityId);
+        return commentService.search(communityId, query, viewerId);
     }
 
     @GetMapping("/api/comment/{commentId}/history")

@@ -16,7 +16,35 @@ export interface Flair {
   createdAt: string;
 }
 
-export type PostKind = 'text' | 'link' | 'image' | 'video' | 'gallery';
+export type PostKind = 'text' | 'link' | 'image' | 'video' | 'gallery' | 'poll' | 'crosspost';
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+}
+
+export interface PollInfo {
+  options: PollOption[];
+  totalVotes: number;
+  endsAt: string;
+  ended: boolean;
+  // Only present on the dedicated GET .../poll response (it's viewer-specific, so feeds never carry it).
+  myOptionId?: string | null;
+}
+
+// The original post a crosspost points at; `available` is false when it was removed/deleted or now lives in a
+// private community, in which case every other field is null.
+export interface CrosspostParent {
+  id: string;
+  available: boolean;
+  title: string | null;
+  kind: string | null;
+  body: string | null;
+  url: string | null;
+  authorUsername: string | null;
+  communityName: string | null;
+}
 
 export interface Post {
   id: string;
@@ -51,6 +79,9 @@ export interface Post {
   // hide author actions and skip the media renderer for these.
   deleted: boolean;
   editedAt: string | null;
+  poll?: PollInfo | null;
+  crosspostOf?: string | null;
+  crosspostParent?: CrosspostParent | null;
   createdAt: string;
   // Never sent by the backend on the feed response itself — merged in client-side from a separate
   // GET /api/vote/mine call (see useFeed), because the vote module can't attach it to Post without

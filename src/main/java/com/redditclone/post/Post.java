@@ -9,6 +9,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 
+import com.redditclone.post.dto.CrosspostParent;
+import com.redditclone.post.dto.PollView;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -116,6 +119,17 @@ public class Post {
     // moderator removal or author delete already changed.
     @Version
     private int version;
+
+    // The ORIGINAL post this one crossposts (never another crosspost), null for ordinary posts.
+    @Column(name = "crosspost_of")
+    private UUID crosspostOf;
+
+    // Populated by PostService.attachPoll / attachCrosspostParent, same pattern/placement as media/flair.
+    @Transient
+    private PollView poll;
+
+    @Transient
+    private CrosspostParent crosspostParent;
 
     @Column(name = "edited_at")
     private Instant editedAt;
@@ -335,6 +349,30 @@ public class Post {
 
     public void setDeleted(boolean deleted) {
         this.deleted = deleted;
+    }
+
+    public UUID getCrosspostOf() {
+        return crosspostOf;
+    }
+
+    public void setCrosspostOf(UUID crosspostOf) {
+        this.crosspostOf = crosspostOf;
+    }
+
+    public PollView getPoll() {
+        return poll;
+    }
+
+    public void setPoll(PollView poll) {
+        this.poll = poll;
+    }
+
+    public CrosspostParent getCrosspostParent() {
+        return crosspostParent;
+    }
+
+    public void setCrosspostParent(CrosspostParent crosspostParent) {
+        this.crosspostParent = crosspostParent;
     }
 
     public Instant getEditedAt() {
