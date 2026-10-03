@@ -137,6 +137,8 @@ public class CommentService {
         if (!saved.isRemoved()) {
             notifyFanOut(saved, post, parent, authorId, sanitizedBody);
         }
+        // Same attach as editBody/the read paths, so the response carries the author's username.
+        attachAuthorUsernames(List.of(saved));
         return saved;
     }
 
