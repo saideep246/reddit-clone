@@ -10,6 +10,7 @@ import com.redditclone.common.exception.BadRequestException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.common.text.Sanitizer;
+import com.redditclone.common.text.SearchTerms;
 import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
@@ -404,7 +405,7 @@ public class PostService {
     // No pagination — a relevance ranking (ts_rank) isn't a stable keyset sort key the way created_at/
     // score are, so this returns a single page, same as the source plan's own search sketch.
     public List<Post> search(UUID communityId, String query) {
-        List<UUID> rankedIds = posts.searchIds(communityId, query);
+        List<UUID> rankedIds = posts.searchIds(communityId, query, SearchTerms.prefixTsQuery(query));
         if (rankedIds.isEmpty()) {
             return List.of();
         }
@@ -416,7 +417,7 @@ public class PostService {
     // Sitewide "r/all" counterpart of search above — same rank-then-refetch shape, backed by a query that
     // excludes private communities the viewer can't see instead of a single community_id filter.
     public List<Post> searchAll(String query, UUID viewerId) {
-        List<UUID> rankedIds = posts.searchAllIds(query, viewerId);
+        List<UUID> rankedIds = posts.searchAllIds(query, SearchTerms.prefixTsQuery(query), viewerId);
         if (rankedIds.isEmpty()) {
             return List.of();
         }

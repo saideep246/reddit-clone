@@ -21,6 +21,7 @@ import com.redditclone.common.paging.RankCursor;
 import com.redditclone.common.paging.RankCursorCodec;
 import com.redditclone.common.paging.Thing;
 import com.redditclone.common.text.Sanitizer;
+import com.redditclone.common.text.SearchTerms;
 import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.post.Post;
@@ -496,7 +497,7 @@ public class CommentService {
         if (query == null || query.isBlank()) {
             return List.of();
         }
-        List<UUID> rankedIds = comments.searchIds(communityId, query.trim(), viewerId);
+        List<UUID> rankedIds = comments.searchIds(communityId, query.trim(), SearchTerms.prefixTsQuery(query), viewerId);
         if (rankedIds.isEmpty()) {
             return List.of();
         }

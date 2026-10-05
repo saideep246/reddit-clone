@@ -242,11 +242,14 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     @Query(value = """
             SELECT id FROM posts
             WHERE community_id = :communityId AND NOT removed AND NOT deleted
-              AND search_vector @@ websearch_to_tsquery('english', :query)
-            ORDER BY ts_rank(search_vector, websearch_to_tsquery('english', :query)) DESC
+              AND (search_vector @@ websearch_to_tsquery('english', :query)
+                   OR search_vector @@ to_tsquery('english', :prefixQuery))
+            ORDER BY ts_rank(search_vector, websearch_to_tsquery('english', :query))
+                     + ts_rank(search_vector, to_tsquery('english', :prefixQuery)) DESC
             LIMIT 25
             """, nativeQuery = true)
-    List<UUID> searchIds(@Param("communityId") UUID communityId, @Param("query") String query);
+    List<UUID> searchIds(@Param("communityId") UUID communityId, @Param("query") String query,
+                          @Param("prefixQuery") String prefixQuery);
 
     // Sitewide "r/all" counterpart of searchIds above — same ranked-ids-only shape, minus the community_id
     // filter, plus an explicit private-community exclusion (mirrors CommunityService.requireViewAccess's
@@ -261,14 +264,17 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
             SELECT p.id FROM posts p
             JOIN communities c ON c.id = p.community_id
             WHERE NOT p.removed AND NOT p.deleted
-              AND p.search_vector @@ websearch_to_tsquery('english', :query)
+              AND (p.search_vector @@ websearch_to_tsquery('english', :query)
+                   OR p.search_vector @@ to_tsquery('english', :prefixQuery))
               AND (c.type <> 'private'
                    OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = :viewerId AND m.community_id = p.community_id)
                    OR EXISTS (SELECT 1 FROM community_moderators cm WHERE cm.user_id = :viewerId AND cm.community_id = p.community_id))
-            ORDER BY ts_rank(p.search_vector, websearch_to_tsquery('english', :query)) DESC
+            ORDER BY ts_rank(p.search_vector, websearch_to_tsquery('english', :query))
+                     + ts_rank(p.search_vector, to_tsquery('english', :prefixQuery)) DESC
             LIMIT 25
             """, nativeQuery = true)
-    List<UUID> searchAllIds(@Param("query") String query, @Param("viewerId") UUID viewerId);
+    List<UUID> searchAllIds(@Param("query") String query, @Param("prefixQuery") String prefixQuery,
+                             @Param("viewerId") UUID viewerId);
 
     int countByCommunityIdAndPinnedTrue(UUID communityId);
 

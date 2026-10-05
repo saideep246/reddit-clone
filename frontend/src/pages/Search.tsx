@@ -34,8 +34,9 @@ export function Search() {
   const query = debouncedQuery.trim();
   const posts = usePostSearch(query, scope);
   const commentHits = useCommentSearch(query, scope);
-  const communities = useCommunitySearch(query);
-  const users = useUserSearch(query);
+  // People type "r/name" and "u/name" the way Reddit writes them; names are stored without the prefix.
+  const communities = useCommunitySearch(query.replace(/^\/?r\//i, ''));
+  const users = useUserSearch(query.replace(/^\/?u(ser)?\//i, ''));
 
   return (
     <div>

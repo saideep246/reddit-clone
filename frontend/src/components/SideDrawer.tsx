@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import styles from './SideDrawer.module.css';
 
@@ -36,7 +36,8 @@ const ICONS = {
 };
 
 export function SideDrawer({ open, onClose }: SideDrawerProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
@@ -102,6 +103,21 @@ export function SideDrawer({ open, onClose }: SideDrawerProps) {
         {renderSection(null, feeds)}
         {renderSection('Communities', community)}
         {renderSection('Your account', account)}
+        {user && (
+          <section className={styles.section}>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={async () => {
+                onClose();
+                await logout();
+                navigate('/');
+              }}
+            >
+              <span>Log out</span>
+            </button>
+          </section>
+        )}
       </nav>
     </>
   );

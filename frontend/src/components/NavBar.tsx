@@ -1,5 +1,5 @@
-import { useCallback, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ChatNavLink } from './ChatNavLink';
 import { CreateMenu } from './CreateMenu';
@@ -12,7 +12,16 @@ import styles from './NavBar.module.css';
 export function NavBar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState('');
+
+  // On the search page the box mirrors the page's own query (so a reload, a shared link or the page's own
+  // input all leave the navbar showing what is being searched).
+  useEffect(() => {
+    if (location.pathname === '/search') {
+      setQuery(new URLSearchParams(location.search).get('q') ?? '');
+    }
+  }, [location.pathname, location.search]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 

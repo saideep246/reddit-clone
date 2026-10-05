@@ -72,3 +72,12 @@
   background: var(--color-bg);
   font-weight: 600;
 }
+
+button.item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

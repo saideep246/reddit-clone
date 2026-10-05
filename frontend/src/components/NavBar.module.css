@@ -146,3 +146,50 @@
 .menuButton:hover {
   background: var(--color-bg);
 }
+
+/* Narrow windows: the search box is the one thing that must stay usable, so it flexes to fill the bar and the
+   secondary items give way (Communities link, username, Log Out — the latter lives in the side drawer). */
+@media (max-width: 900px) {
+  .nav {
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+  }
+
+  .communitiesLink,
+  .username {
+    display: none;
+  }
+
+  .search {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .actions {
+    margin-left: 0;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .logoutButton {
+    display: none;
+  }
+
+  /* Phone widths: the search box moves to its own full-width row under the main bar. */
+  .nav {
+    flex-wrap: wrap;
+    height: auto;
+    padding: var(--space-2);
+  }
+
+  .actions {
+    margin-left: auto;
+  }
+
+  .search {
+    order: 3;
+    flex: 1 0 100%;
+  }
+}
