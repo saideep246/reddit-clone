@@ -7,7 +7,6 @@ import { CommunitySettingsTab } from '../components/CommunitySettingsTab';
 import { ModLogTab } from '../components/ModLogTab';
 import { ModNotesTab } from '../components/ModNotesTab';
 import { ModQueueTab } from '../components/ModQueueTab';
-import { SettingsTab } from '../components/SettingsTab';
 import { fetchCommunityAbout } from '../lib/communityApi';
 import {
   hasPermission,
