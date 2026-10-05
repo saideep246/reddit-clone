@@ -10,6 +10,8 @@ interface ReplyBoxProps {
   // Seeds the textarea — used when this box edits existing content rather than starting a new reply.
   initialBody?: string;
   onCancel?: () => void;
+  // Focuses the textarea on mount (used when the composer is opened by an explicit click).
+  autoFocus?: boolean;
   onSubmit: (body: string) => Promise<void>;
 }
 
@@ -18,6 +20,7 @@ export function ReplyBox({
   submitLabel = 'Comment',
   initialBody = '',
   onCancel,
+  autoFocus = false,
   onSubmit,
 }: ReplyBoxProps) {
   const { user } = useAuth();
@@ -53,6 +56,7 @@ export function ReplyBox({
       <textarea
         className={styles.textarea}
         placeholder={placeholder}
+        autoFocus={autoFocus}
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />

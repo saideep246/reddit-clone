@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class PostService {
@@ -619,17 +620,57 @@ public class PostService {
     }
 
     private List<Post> attachAll(List<Post> page) {
-        return attachCrosspostParent(attachPoll(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(page)))))));
+        return attachCardExtras(attachCrosspostParent(attachPoll(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(page))))))));
     }
 
     private Post attachAll(Post p) {
-        attachCrosspostParent(attachPoll(List.of(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(p))))))));
+        attachCardExtras(attachCrosspostParent(attachPoll(List.of(attachCommunityName(attachAuthorUsername(attachFlair(attachGalleryMedia(attachMedia(p)))))))));
         return p;
+    }
+
+    // Per-card extras for the Reddit-style action bar and header: the community's icon and the repost count.
+    // Both batched across the page (one grouped COUNT query, two lookups for icons).
+    private List<Post> attachCardExtras(List<Post> page) {
+        if (page.isEmpty()) {
+            return page;
+        }
+        Set<UUID> communityIds = page.stream().map(Post::getCommunityId).collect(Collectors.toSet());
+        Map<UUID, String> icons = communityService.findIconUrlsByIds(communityIds);
+        List<UUID> postIds = page.stream().map(Post::getId).toList();
+        Map<UUID, Integer> reposts = new HashMap<>();
+        jdbc.query("""
+                SELECT crosspost_of, count(*) AS n FROM posts
+                WHERE crosspost_of IN (:ids) AND NOT removed AND NOT deleted GROUP BY crosspost_of
+                """, new MapSqlParameterSource("ids", postIds),
+                rs -> {
+                    reposts.put(rs.getObject("crosspost_of", UUID.class), rs.getInt("n"));
+                });
+        for (Post p : page) {
+            p.setCommunityIconUrl(icons.get(p.getCommunityId()));
+            p.setCrosspostCount(reposts.getOrDefault(p.getId(), 0));
+        }
+        return page;
+    }
+
+    // Short share links: /p/<postId> resolves to the canonical /r/<community>/comments/<postId> URL. Removed
+    // posts and posts the viewer can't see (private community) resolve to 404, so a share link never confirms
+    // that such a post exists.
+    public String resolveCommunityName(UUID postId, UUID viewerId) {
+        Post p = posts.findById(postId).orElseThrow(() -> new NotFoundException("post not found"));
+        if (p.isRemoved()) {
+            throw new NotFoundException("post not found");
+        }
+        try {
+            communityService.requireViewAccess(viewerId, p.getCommunityId());
+        } catch (ForbiddenException e) {
+            throw new NotFoundException("post not found");
+        }
+        return communityService.findNamesByIds(Set.of(p.getCommunityId())).get(p.getCommunityId());
     }
 
     // Poll and crosspost-parent data for a single freshly built post (the list path does this in attachAll).
     private Post withExtras(Post p) {
-        attachCrosspostParent(attachPoll(List.of(p)));
+        attachCardExtras(attachCrosspostParent(attachPoll(List.of(p))));
         return p;
     }
 

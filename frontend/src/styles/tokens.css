@@ -6,14 +6,18 @@
   --color-downvote: #7193ff;
   --color-link: #0079d3;
 
-  /* Surfaces */
-  --color-bg: #dae0e6;
+  /* Surfaces — modern Reddit look: a white page, flat cards separated by hairlines, soft grey fills for
+     pills/inputs/hover (--color-bg is that fill; the page itself is --color-page). */
+  --color-page: #ffffff;
+  --color-bg: #f2f4f5;
   --color-surface: #ffffff;
-  --color-border: #edeff1;
+  --color-border: #e3e6e8;
+  --color-pill: #eaedef;
+  --color-pill-hover: #dde2e5;
 
   /* Text */
-  --color-text: #1a1a1b;
-  --color-text-secondary: #787c7e;
+  --color-text: #0f1a1c;
+  --color-text-secondary: #576f76;
   --color-text-on-primary: #ffffff;
   --color-danger: #ea0027;
   --color-danger-bg: #fdecea;
@@ -52,12 +56,15 @@
     --color-downvote: #9494ff;
     --color-link: #4fbcff;
 
-    --color-bg: #030303;
-    --color-surface: #1a1a1b;
-    --color-border: #343536;
+    --color-page: #0b1416;
+    --color-bg: #1a282d;
+    --color-surface: #0b1416;
+    --color-border: #2a3236;
+    --color-pill: #2a3236;
+    --color-pill-hover: #35424a;
 
-    --color-text: #d7dadc;
-    --color-text-secondary: #818384;
+    --color-text: #eef1f3;
+    --color-text-secondary: #8ba2ad;
     --color-danger: #ff6b6b;
     --color-danger-bg: #3a1f1f;
 
@@ -70,12 +77,15 @@
   --color-downvote: #9494ff;
   --color-link: #4fbcff;
 
-  --color-bg: #030303;
-  --color-surface: #1a1a1b;
-  --color-border: #343536;
+  --color-page: #0b1416;
+  --color-bg: #1a282d;
+  --color-surface: #0b1416;
+  --color-border: #2a3236;
+  --color-pill: #2a3236;
+  --color-pill-hover: #35424a;
 
-  --color-text: #d7dadc;
-  --color-text-secondary: #818384;
+  --color-text: #eef1f3;
+  --color-text-secondary: #8ba2ad;
   --color-danger: #ff6b6b;
   --color-danger-bg: #3a1f1f;
 

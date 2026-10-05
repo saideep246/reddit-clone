@@ -12,7 +12,7 @@ body {
 }
 
 body {
-  background: var(--color-bg);
+  background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;

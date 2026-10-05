@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import { PostList } from '../components/PostList';
+import styles from './Home.module.css';
 import { SortTabs } from '../components/SortTabs';
 import { useFeed } from '../hooks/useFeed';
 import type { SortType, TopPeriod } from '../types/post';
@@ -12,7 +13,7 @@ export function Home() {
   const { posts, loading, loadingMore, error, hasMore, loadMore, applyVote } = useFeed('all', sort, period);
 
   return (
-    <div>
+    <div className={styles.feed}>
       <SortTabs />
       <PostList
         posts={posts}

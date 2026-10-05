@@ -57,9 +57,6 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
   return (
     <div>
       <div className={styles.comment}>
-        <div className={styles.voteColumn}>
-          <VoteControl score={comment.score} myVote={comment.myVote} onVote={(dir) => onVote(comment.id, dir)} />
-        </div>
         <div className={styles.body}>
           <div className={styles.meta}>
             {comment.authorUsername ? (
@@ -101,11 +98,13 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
               {decodeHtmlEntities(comment.body)}
             </p>
           )}
-          {!readOnly && !comment.deleted && comment.depth < MAX_DEPTH && (
-            <button type="button" className={styles.replyToggle} onClick={() => setReplying((r) => !r)}>
-              Reply
-            </button>
-          )}
+          <div className={styles.actionRow}>
+            <VoteControl variant="compact" score={comment.score} myVote={comment.myVote} onVote={(dir) => onVote(comment.id, dir)} />
+            {!readOnly && !comment.deleted && comment.depth < MAX_DEPTH && (
+              <button type="button" className={styles.replyToggle} onClick={() => setReplying((r) => !r)}>
+                Reply
+              </button>
+            )}
           {communityName && !comment.deleted && !comment.removed && (
             <>
               {canSticky && comment.parentId === null && (
@@ -134,6 +133,7 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
               )}
             </>
           )}
+          </div>
           {user && !editing && (
             <OwnContentActions
               viewerId={user.id}

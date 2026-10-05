@@ -113,3 +113,21 @@
 .replyToggle + .replyToggle {
   margin-left: var(--space-2);
 }
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.actionRow .replyToggle {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.actionRow .replyToggle:hover {
+  background: var(--color-pill);
+}

@@ -1,41 +1,67 @@
 .control {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  width: 40px;
   flex-shrink: 0;
-  padding-top: var(--space-2);
+  color: var(--color-text);
+}
+
+.pill {
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--color-pill);
+  padding: 0 2px;
+}
+
+.compact {
+  height: 28px;
 }
 
 .arrow {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 100%;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: inherit;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   padding: 0;
 }
 
 .arrow:hover {
-  background: var(--color-bg);
-}
-
-.arrowUp.active {
-  color: var(--color-upvote);
-}
-
-.arrowDown.active {
-  color: var(--color-downvote);
+  background: var(--color-pill-hover);
 }
 
 .score {
+  min-width: 16px;
+  text-align: center;
   font-size: 12px;
   font-weight: 700;
-  color: var(--color-text);
+  padding: 0 2px;
+}
+
+/* An active vote tints the whole pill, as on Reddit. */
+.pill.up {
+  background: var(--color-upvote);
+  color: #fff;
+}
+
+.pill.down {
+  background: var(--color-downvote);
+  color: #fff;
+}
+
+.pill.up .arrow:hover,
+.pill.down .arrow:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.compact.up {
+  color: var(--color-upvote);
+}
+
+.compact.down {
+  color: var(--color-downvote);
 }

@@ -7,7 +7,7 @@ import { EditHistoryDialog } from '../components/EditHistoryDialog';
 import { OwnContentActions } from '../components/OwnContentActions';
 import { PostMedia } from '../components/PostMedia';
 import { ReplyBox } from '../components/ReplyBox';
-import { VoteControl } from '../components/VoteControl';
+import { PostActionBar } from '../components/PostActionBar';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { ApiError } from '../lib/apiClient';
 import { fetchCommunityAbout } from '../lib/communityApi';
@@ -21,6 +21,9 @@ import styles from './PostDetail.module.css';
 export function PostDetail() {
   const { communityName = '', postId = '' } = useParams();
   const [searchParams] = useSearchParams();
+  // The top-level comment box stays hidden until the comment pill is clicked (or the thread is opened from a
+  // feed card's comment pill, which adds ?comment=1).
+  const [composing, setComposing] = useState(searchParams.get('comment') === '1');
   const sort = (searchParams.get('commentSort') as CommentSortType) || 'best';
 
   const { user } = useAuth();
@@ -123,47 +126,47 @@ export function PostDetail() {
   }
 
   return (
-    <div>
+    <div className={styles.page}>
       <article className={styles.header}>
-        <VoteControl
-          score={post.score}
-          myVote={post.myVote}
-          onVote={applyPostVote}
-        />
-
         <div className={styles.body}>
           <div className={styles.meta}>
-            Posted by{' '}
-            {post.authorUsername ? (
-              <Link
-                className={styles.communityLink}
-                to={`/user/${post.authorUsername}`}
-              >
-                u/{post.authorUsername}
-              </Link>
-            ) : (
-              'u/[deleted]'
-            )}{' '}
-            in{' '}
-            <Link
-              className={styles.communityLink}
-              to={`/r/${post.communityName}`}
-            >
-              r/{post.communityName ?? 'unknown'}
-            </Link>{' '}
-            · {timeAgo(post.createdAt)}
-            {post.editedAt && !post.deleted && (
-              <>
-                {' · '}
-                {user && (user.id === post.authorId || canModerate) ? (
-                  <button type="button" className={styles.linkButton} onClick={() => setShowHistory(true)}>
-                    edited
-                  </button>
-                ) : (
-                  'edited'
+            <Link to={`/r/${post.communityName}`} className={styles.avatarLink}>
+              {post.communityIconUrl ? (
+                <img className={styles.avatar} src={post.communityIconUrl} alt="" />
+              ) : (
+                <span className={styles.avatarFallback}>{(post.communityName ?? '?').slice(0, 1).toUpperCase()}</span>
+              )}
+            </Link>
+            <div>
+              <div>
+                <Link className={styles.communityLink} to={`/r/${post.communityName}`}>
+                  r/{post.communityName ?? 'unknown'}
+                </Link>
+                {' • '}
+                {timeAgo(post.createdAt)}
+                {post.editedAt && !post.deleted && (
+                  <>
+                    {' • '}
+                    {user && (user.id === post.authorId || canModerate) ? (
+                      <button type="button" className={styles.linkButton} onClick={() => setShowHistory(true)}>
+                        edited
+                      </button>
+                    ) : (
+                      'edited'
+                    )}
+                  </>
                 )}
-              </>
-            )}
+              </div>
+              <div className={styles.byline}>
+                {post.authorUsername ? (
+                  <Link className={styles.authorLink} to={`/user/${post.authorUsername}`}>
+                    u/{post.authorUsername}
+                  </Link>
+                ) : (
+                  'u/[deleted]'
+                )}
+              </div>
+            </div>
           </div>
 
           {editingMeta ? (
@@ -214,9 +217,13 @@ export function PostDetail() {
               <PostMedia post={post} fullBody />
             ))}
 
-          <div className={styles.footer}>
-            {post.commentCount} comments
-          </div>
+          <PostActionBar
+            post={post}
+            onVote={applyPostVote}
+            commentsHref={`/r/${communityName}/comments/${postId}`}
+            onCommentClick={() => setComposing((c) => !c)}
+            composing={composing}
+          />
 
           {user && !editingPost && (
             <OwnContentActions
@@ -228,15 +235,6 @@ export function PostDetail() {
               onEdit={() => setEditingPost(true)}
               onDelete={removePost}
             />
-          )}
-
-          {user && !post.deleted && !post.removed && (
-            <Link
-              className={styles.linkButton}
-              to={`/submit?crosspost=${post.crosspostOf ?? post.id}&from=${post.crosspostParent?.communityName ?? post.communityName}&title=${encodeURIComponent(post.crosspostParent?.title ?? post.title)}`}
-            >
-              Crosspost
-            </Link>
           )}
 
           {user &&
@@ -265,8 +263,15 @@ export function PostDetail() {
       <div className={styles.commentsSection}>
         <CommentSortDropdown />
 
-        {!post.deleted && (
-          <ReplyBox onSubmit={(body) => submitComment(null, body)} />
+        {!post.deleted && composing && (
+          <ReplyBox
+            autoFocus
+            onCancel={() => setComposing(false)}
+            onSubmit={async (body) => {
+              await submitComment(null, body);
+              setComposing(false);
+            }}
+          />
         )}
 
         {comments.length === 0 ? (

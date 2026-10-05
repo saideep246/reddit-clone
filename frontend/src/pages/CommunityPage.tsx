@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { CommunityHeader } from '../components/CommunityHeader';
 import { CommunitySidebar } from '../components/CommunitySidebar';
 import { PostCard } from '../components/PostCard';
 import { PostList } from '../components/PostList';
@@ -36,6 +37,8 @@ export function CommunityPage() {
   }
 
   return (
+    <>
+    <CommunityHeader community={community} />
     <div className={styles.layout}>
       <div className={styles.main}>
         <form onSubmit={searchHere} className={styles.communitySearch}>
@@ -78,5 +81,6 @@ export function CommunityPage() {
         <CommunitySidebar community={community} rules={rules} actionError={actionError} onJoin={join} onLeave={leave} onRequestJoin={requestJoin} />
       </div>
     </div>
+    </>
   );
 }

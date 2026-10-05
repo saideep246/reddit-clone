@@ -424,6 +424,29 @@ public class CommunityService {
 
     // Same batched shape as getFlairs above — read by PostService.attachCommunityName so a sitewide
     // "r/all" page (mixing posts from many communities) can still show which community each post is from.
+    // Icon thumbnail URLs for a batch of communities (only those that have one), for post cards: two batched
+    // lookups (communities, then their media) no matter how many communities are on the page.
+    public Map<UUID, String> findIconUrlsByIds(Set<UUID> communityIds) {
+        Map<UUID, UUID> iconMediaByCommunity = new HashMap<>();
+        communities.findAllById(communityIds).forEach(c -> {
+            if (c.getIconMediaId() != null) {
+                iconMediaByCommunity.put(c.getId(), c.getIconMediaId());
+            }
+        });
+        if (iconMediaByCommunity.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, MediaView> views = mediaService.getMediaViews(new HashSet<>(iconMediaByCommunity.values()));
+        Map<UUID, String> urls = new HashMap<>();
+        iconMediaByCommunity.forEach((communityId, mediaId) -> {
+            MediaView v = views.get(mediaId);
+            if (v != null) {
+                urls.put(communityId, v.thumbnailUrl() != null ? v.thumbnailUrl() : v.displayUrl());
+            }
+        });
+        return urls;
+    }
+
     public Map<UUID, String> findNamesByIds(Set<UUID> communityIds) {
         Map<UUID, String> byId = new HashMap<>();
         communities.findAllById(communityIds).forEach(c -> byId.put(c.getId(), c.getName()));

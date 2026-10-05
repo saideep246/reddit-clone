@@ -82,6 +82,9 @@ export interface Post {
   poll?: PollInfo | null;
   crosspostOf?: string | null;
   crosspostParent?: CrosspostParent | null;
+  // Card extras attached by the backend: the community's icon and how many live crossposts (reposts) exist.
+  communityIconUrl?: string | null;
+  crosspostCount?: number;
   createdAt: string;
   // Never sent by the backend on the feed response itself — merged in client-side from a separate
   // GET /api/vote/mine call (see useFeed), because the vote module can't attach it to Post without

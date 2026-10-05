@@ -131,6 +131,14 @@ public class Post {
     @Transient
     private CrosspostParent crosspostParent;
 
+    // Card extras, attached by PostService.attachCardExtras: the community's icon (null if it has none) and how
+    // many live crossposts ("reposts") of this post exist.
+    @Transient
+    private String communityIconUrl;
+
+    @Transient
+    private int crosspostCount;
+
     @Column(name = "edited_at")
     private Instant editedAt;
 
@@ -357,6 +365,22 @@ public class Post {
 
     public void setCrosspostOf(UUID crosspostOf) {
         this.crosspostOf = crosspostOf;
+    }
+
+    public String getCommunityIconUrl() {
+        return communityIconUrl;
+    }
+
+    public void setCommunityIconUrl(String communityIconUrl) {
+        this.communityIconUrl = communityIconUrl;
+    }
+
+    public int getCrosspostCount() {
+        return crosspostCount;
+    }
+
+    public void setCrosspostCount(int crosspostCount) {
+        this.crosspostCount = crosspostCount;
     }
 
     public PollView getPoll() {

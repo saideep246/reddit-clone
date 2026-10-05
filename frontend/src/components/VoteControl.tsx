@@ -1,18 +1,28 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { DownvoteIcon, UpvoteIcon } from './icons';
 import styles from './VoteControl.module.css';
 
 interface VoteControlProps {
   score: number;
   myVote?: 1 | -1;
   onVote: (dir: 1 | -1) => void;
+  // pill: Reddit's rounded vote pill on posts. compact: the small inline control on comments.
+  variant?: 'pill' | 'compact';
 }
 
-export function VoteControl({ score, myVote, onVote }: VoteControlProps) {
+function formatScore(n: number): string {
+  if (Math.abs(n) >= 10_000) return `${(n / 1000).toFixed(0)}k`;
+  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(n);
+}
+
+export function VoteControl({ score, myVote, onVote, variant = 'pill' }: VoteControlProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const handleClick = (dir: 1 | -1) => {
+  const handleClick = (e: React.MouseEvent, dir: 1 | -1) => {
+    e.stopPropagation();
     if (!user) {
       navigate('/login');
       return;
@@ -20,21 +30,18 @@ export function VoteControl({ score, myVote, onVote }: VoteControlProps) {
     onVote(dir);
   };
 
-  const upClass = [styles.arrow, styles.arrowUp, myVote === 1 ? styles.active : ''].join(' ').trim();
-  const downClass = [styles.arrow, styles.arrowDown, myVote === -1 ? styles.active : ''].join(' ').trim();
+  const rootClass = [styles.control, variant === 'pill' ? styles.pill : styles.compact, myVote === 1 ? styles.up : '', myVote === -1 ? styles.down : '']
+    .join(' ')
+    .trim();
 
   return (
-    <div className={styles.control}>
-      <button type="button" className={upClass} aria-label="Upvote" onClick={() => handleClick(1)}>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 4 L17 14 H3 Z" />
-        </svg>
+    <div className={rootClass} onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={`${styles.arrow} ${styles.arrowUp}`} aria-label="Upvote" aria-pressed={myVote === 1} onClick={(e) => handleClick(e, 1)}>
+        <UpvoteIcon filled={myVote === 1} />
       </button>
-      <span className={styles.score}>{score}</span>
-      <button type="button" className={downClass} aria-label="Downvote" onClick={() => handleClick(-1)}>
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 16 L3 6 H17 Z" />
-        </svg>
+      <span className={styles.score}>{formatScore(score)}</span>
+      <button type="button" className={`${styles.arrow} ${styles.arrowDown}`} aria-label="Downvote" aria-pressed={myVote === -1} onClick={(e) => handleClick(e, -1)}>
+        <DownvoteIcon filled={myVote === -1} />
       </button>
     </div>
   );
