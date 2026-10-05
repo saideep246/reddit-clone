@@ -46,6 +46,9 @@ app:
     bootstrap-username: ${ADMIN_BOOTSTRAP_USERNAME:}
   storage:
     endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}    # adobe/s3mock locally; Cloudflare R2's S3-compatible endpoint in prod
+    # Address put into presigned upload URLs, i.e. what the BROWSER must be able to reach. Defaults to `endpoint`;
+    # in Docker the app reaches storage as http://s3mock:9090 but the browser needs http://localhost:9000.
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:${STORAGE_ENDPOINT:http://localhost:9000}}
     bucket: ${STORAGE_BUCKET:reddit-clone-media}
     access-key: ${STORAGE_ACCESS_KEY:test}    # s3mock doesn't validate credentials; any non-empty value works locally
     secret-key: ${STORAGE_SECRET_KEY:test}

@@ -35,5 +35,47 @@ services:
     environment:
       COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: reddit-clone-media
     ports: ["9000:9090"]   # keep the app-facing port the same as the original MinIO plan (9090 internally)
+  app:
+    # The Spring Boot backend. Inside the compose network it reaches the other services by NAME (postgres,
+    # pgbouncer, redis, s3mock) on their container ports, so the host-port shifts above don't matter here.
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_started
+      s3mock:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/redditclone?stringtype=unspecified   # app traffic -> PgBouncer
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/redditclone                                # migrations -> Postgres directly
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      STORAGE_ENDPOINT: http://s3mock:9090            # what the backend itself talks to
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000  # what the browser must reach for presigned uploads
+      MEDIA_PUBLIC_BASE_URL: http://localhost:9000/reddit-clone-media
+      CORS_ALLOWED_ORIGINS: http://localhost:5174
+      # Uncomment to make a user a site admin at startup (the user must already exist):
+      # ADMIN_BOOTSTRAP_USERNAME: yourname
+    ports: ["8081:8081"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+  web:
+    # The React site, built once and served by nginx. VITE_API_BASE_URL is baked in at build time and is the
+    # address the BROWSER uses to reach the backend.
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8081
+    depends_on:
+      app:
+        condition: service_healthy
+    ports: ["5174:80"]
 volumes:
   pgdata:

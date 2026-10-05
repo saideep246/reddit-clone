@@ -33,7 +33,7 @@ public class StorageConfig {
     }
 
     @Bean
-    public S3Presigner s3Presigner(@Value("${app.storage.endpoint}") String endpoint,
+    public S3Presigner s3Presigner(@Value("${app.storage.public-endpoint:${app.storage.endpoint}}") String endpoint,
                                     @Value("${app.storage.access-key}") String accessKey,
                                     @Value("${app.storage.secret-key}") String secretKey,
                                     @Value("${app.storage.region}") String region) {
