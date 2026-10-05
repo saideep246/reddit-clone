@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.ObjectMapper;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -211,12 +212,14 @@ public class ModerationController {
         communityService.setRules(userId, communityId(name), req.rules());
     }
 
-    // communityService.updateDescription checks PERM_MANAGE_SETTINGS internally, same convention as setRules.
+    // communityService.updateSettings checks PERM_MANAGE_SETTINGS internally, same convention as setRules. Echoes the
+    // saved description (the Mod Tools Settings tab and seed_and_verify_community_settings.sh read it back).
     @PatchMapping("/r/{name}/mod/settings")
-    public void updateSettings(@AuthenticationPrincipal UUID userId, @PathVariable String name,
-                               @Valid @RequestBody UpdateCommunitySettingsRequest req) {
-        communityService.updateSettings(userId, communityId(name), req.description(), req.iconMediaId(),
-                req.bannerMediaId(), req.clearIcon(), req.clearBanner());
+    public Map<String, String> updateSettings(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                                               @Valid @RequestBody UpdateCommunitySettingsRequest req) {
+        String description = communityService.updateSettings(userId, communityId(name), req.description(),
+                req.iconMediaId(), req.bannerMediaId(), req.clearIcon(), req.clearBanner());
+        return Collections.singletonMap("description", description);
     }
 
     @PatchMapping("/r/{name}/mod/users/{targetUserId}/flair")

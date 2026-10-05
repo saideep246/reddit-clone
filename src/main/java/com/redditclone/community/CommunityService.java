@@ -474,12 +474,12 @@ public class CommunityService {
         c.setBannerUrl(banner == null ? null : banner.displayUrl());
     }
 
-    // Description plus icon/banner, gated by PERM_MANAGE_RULES (the existing "community presentation"
-    // bit — rules and settings are the same kind of sidebar content). Null fields are left unchanged.
+    // Description plus icon/banner, gated by PERM_MANAGE_SETTINGS. Null fields are left unchanged; returns the
+    // description as saved so the caller can echo it.
     @Transactional
-    public void updateSettings(UUID actorId, UUID communityId, String description, UUID iconMediaId,
-                                UUID bannerMediaId, boolean clearIcon, boolean clearBanner) {
-        requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_RULES);
+    public String updateSettings(UUID actorId, UUID communityId, String description, UUID iconMediaId,
+                                  UUID bannerMediaId, boolean clearIcon, boolean clearBanner) {
+        requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_SETTINGS);
         Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
         if (description != null) {
             c.setDescription(description.trim());
@@ -498,6 +498,7 @@ public class CommunityService {
         }
         communities.save(c);
         auditWriter.logAction(communityId, actorId, "update_settings", "community", communityId, null);
+        return c.getDescription();
     }
 
     // Three batched IN-queries total, regardless of how many communities are in the list — a page of 25
