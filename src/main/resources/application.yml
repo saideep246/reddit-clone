@@ -35,6 +35,11 @@ spring:
     redis:
       host: localhost
       port: 6380
+      # Unset locally (docker-compose's redis container has neither auth nor TLS). Set both when pointing
+      # at a managed Redis provider like Upstash, which requires TLS + a password on its standard endpoint.
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      ssl:
+        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false}
 
 app:
   jwt:
