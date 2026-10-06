@@ -279,4 +279,22 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     int countByCommunityIdAndPinnedTrue(UUID communityId);
 
     List<Post> findByCommunityIdAndPinnedTrueAndRemovedFalseAndDeletedFalseOrderByCreatedAtDesc(UUID communityId);
+
+    // A user's "saved" tab — theta join against SavedItem rather than a relationship, since SavedItem
+    // carries only a bare targetId UUID (it covers both posts and comments). Referencing SavedItem by
+    // simple name here is the same JPQL-string, no-Java-import precedent as the HiddenItem subquery
+    // above, so it creates no compile-time post -> engagement dependency and no ModuleBoundaryTest risk.
+    // Sort key is s.savedAt (most-recently-saved-first), not p.createdAt, so the caller rebuilds the
+    // next-page cursor from the matching SavedItem row rather than from the Post itself.
+    @Query("""
+            SELECT p FROM Post p, SavedItem s
+            WHERE s.userId = :userId AND s.targetType = 'post' AND s.targetId = p.id
+              AND p.removed = false AND NOT p.deleted
+              AND (s.savedAt < :cursorSavedAt OR (s.savedAt = :cursorSavedAt AND s.targetId < :cursorId))
+            ORDER BY s.savedAt DESC, s.targetId DESC
+            """)
+    List<Post> findSavedPage(@Param("userId") UUID userId,
+                              @Param("cursorSavedAt") Instant cursorSavedAt,
+                              @Param("cursorId") UUID cursorId,
+                              Pageable limit);
 }

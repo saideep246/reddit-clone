@@ -33,6 +33,7 @@ const ICONS = {
   bell: icon('M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'),
   settings: icon('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z'),
   user: icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0'),
+  saved: icon('M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4z'),
 };
 
 export function SideDrawer({ open, onClose }: SideDrawerProps) {
@@ -73,6 +74,7 @@ export function SideDrawer({ open, onClose }: SideDrawerProps) {
         { to: '/chat', label: 'Chat', icon: ICONS.chat, active: path.startsWith('/chat') },
         { to: '/notifications', label: 'Notifications', icon: ICONS.bell, active: path === '/notifications' },
         { to: `/user/${user.username}`, label: 'Profile', icon: ICONS.user, active: path === `/user/${user.username}` },
+        { to: '/saved', label: 'Saved', icon: ICONS.saved, active: path === '/saved' },
         { to: '/scheduled', label: 'Scheduled posts', icon: ICONS.new, active: path === '/scheduled' },
         { to: '/settings', label: 'Settings', icon: ICONS.settings, active: path === '/settings' },
       ]

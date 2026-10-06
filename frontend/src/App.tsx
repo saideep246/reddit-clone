@@ -13,6 +13,7 @@ import { NotificationsInbox } from './pages/NotificationsInbox';
 import { PostDetail } from './pages/PostDetail';
 import { PostSubmit } from './pages/PostSubmit';
 import { PostRedirect } from './pages/PostRedirect';
+import { SavedPosts } from './pages/SavedPosts';
 import { ScheduledPosts } from './pages/ScheduledPosts';
 import { Register } from './pages/Register';
 import { Search } from './pages/Search';
@@ -48,6 +49,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/submit" element={<PostSubmit />} />
         <Route path="/scheduled" element={<ScheduledPosts />} />
+        <Route path="/saved" element={<SavedPosts />} />
         <Route path="/p/:postId" element={<PostRedirect />} />
         <Route path="/user/:username" element={<UserProfile />} />
         <Route path="/user/:username/followers" element={<UserConnections mode="followers" />} />
