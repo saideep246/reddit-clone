@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -25,6 +27,11 @@ public class StorageConfig {
                               @Value("${app.storage.secret-key}") String secretKey,
                               @Value("${app.storage.region}") String region) {
         return S3Client.builder()
+                // Since AWS SDK 2.30 the default is to add a CRC32 checksum (and aws-chunked trailer encoding) to
+                // every request and to validate it on every response. Cloudflare R2 supports neither reliably, so
+                // only send/validate checksums where an operation truly requires one — R2's documented setting.
+                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))

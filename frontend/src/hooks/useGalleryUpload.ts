@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { completeUpload, requestUploadUrl, uploadFileDirectly } from '../lib/mediaApi';
+import { completeUpload, describeUploadError, requestUploadUrl, uploadFileDirectly } from '../lib/mediaApi';
 import { IMAGE_TYPES, MAX_IMAGE_BYTES } from '../lib/mediaValidation';
 
 // Matches the backend's CreatePostRequest.isMediaIdsValidForKind cap — gallery posts are images only (no
@@ -37,10 +37,9 @@ export function useGalleryUpload(): UseGalleryUploadResult {
         await uploadFileDirectly(uploadUrl, item.file, item.file.type);
         await completeUpload(mediaId);
         setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, mediaId, uploading: false } : i)));
-      } catch {
-        setItems((prev) =>
-          prev.map((i) => (i.id === item.id ? { ...i, uploading: false, error: 'Upload failed.' } : i)),
-        );
+      } catch (err) {
+        const message = describeUploadError(err);
+        setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, uploading: false, error: message } : i)));
       }
     })();
   }, []);

@@ -1,9 +1,12 @@
 package com.redditclone.media;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
@@ -15,12 +18,15 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequ
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 // Thin wrapper around the S3 client/presigner — keeps every other class in this module ignorant of the
 // AWS SDK's own types. Works identically against s3mock (local dev) and Cloudflare R2 (prod).
 @Component
 public class StorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(StorageService.class);
 
     private final S3Client s3;
     private final S3Presigner presigner;
@@ -66,6 +72,48 @@ public class StorageService {
     public void put(String key, byte[] content, String contentType) {
         s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
                 RequestBody.fromBytes(content));
+    }
+
+    // Best effort: used to discard an oversized or abandoned upload. A failure here must never fail the request
+    // that triggered it — the object is merely orphaned, not harmful.
+    public void deleteQuietly(String key) {
+        try {
+            s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+        } catch (RuntimeException e) {
+            log.warn("could not delete object {} from storage: {}", key, e.getMessage());
+        }
+    }
+
+    // Browsers PUT uploads straight to the bucket from the website's origin, which the bucket must explicitly allow
+    // (CORS) — without a rule the preflight is rejected and every browser upload fails even though the same request
+    // works from curl. CORS is INFRASTRUCTURE configuration and is normally set once by hand on the bucket; this exists
+    // only as an opt-in convenience (app.storage.configure-cors) for dev environments. It never overwrites: if the bucket
+    // already has any CORS rules it changes nothing and returns false. Returns true when it created the rule.
+    public boolean configureCorsIfAbsent(List<String> origins) {
+        try {
+            var existing = s3.getBucketCors(b -> b.bucket(bucket));
+            if (existing.hasCorsRules() && !existing.corsRules().isEmpty()) {
+                return false;
+            }
+        } catch (S3Exception e) {
+            if (e.statusCode() != 404) { // 404 = "no CORS configuration yet", the case we want to fill in
+                throw e;
+            }
+        }
+        s3.putBucketCors(b -> b.bucket(bucket).corsConfiguration(c -> c.corsRules(r -> r
+                .allowedOrigins(origins)
+                .allowedMethods("PUT", "GET", "HEAD")
+                .allowedHeaders("*")
+                .exposeHeaders("ETag")
+                .maxAgeSeconds(3600))));
+        return true;
+    }
+
+    // Read-only reachability/credentials check used at startup against a real (remote) bucket: needs only the
+    // permissions the application token already has for normal uploads — never bucket-admin rights, never mutates
+    // anything. Throws if the bucket can't be reached or accessed.
+    public void verifyBucketAccessible() {
+        s3.headBucket(b -> b.bucket(bucket));
     }
 
     // Single HEAD request serving both existence and actual size — completeUpload() uses this to verify

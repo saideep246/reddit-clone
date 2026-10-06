@@ -83,7 +83,7 @@ public class SecurityConfig {
                                 "/r/*/controversial", "/r/*/search", "/r/*/search/comments", "/r/*/posts/*/poll", "/r/*/comments/*", "/user/*/about",
                                 "/user/*/submitted", "/user/*/comments", "/r/*/flairs",
                                 "/r/*/pinned", "/r/*/rules", "/r", "/r/search", "/r/*/about", "/user/search",
-                                "/api/morechildren", "/api/p/*", "/user/*/followers", "/user/*/following")
+                                "/api/morechildren", "/api/p/*", "/api/media/*", "/user/*/followers", "/user/*/following")
                         .permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         // The WebSocket handshake is a plain HTTP GET that a browser-native WebSocket

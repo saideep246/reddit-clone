@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { completeUpload, requestUploadUrl, uploadFileDirectly } from '../lib/mediaApi';
+import { completeUpload, describeUploadError, requestUploadUrl, uploadFileDirectly } from '../lib/mediaApi';
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, VIDEO_TYPES } from '../lib/mediaValidation';
 
 interface UseMediaUploadResult {
@@ -61,8 +61,8 @@ export function useMediaUpload(): UseMediaUploadResult {
         await uploadFileDirectly(uploadUrl, file, file.type);
         await completeUpload(newMediaId);
         setMediaId(newMediaId);
-      } catch {
-        setError('Could not upload this file. Please try again.');
+      } catch (err) {
+        setError(describeUploadError(err));
       } finally {
         setUploading(false);
       }

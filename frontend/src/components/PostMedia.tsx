@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { useLiveMedia } from '../hooks/useLiveMedia';
 import { decodeHtmlEntities } from '../lib/html';
 import { useSettings } from '../settings/SettingsContext';
 import { CrosspostEmbed } from './CrosspostEmbed';
 import { PollBlock } from './PollBlock';
-import type { Post } from '../types/post';
+import type { MediaView, Post } from '../types/post';
 import styles from './PostMedia.module.css';
 
 interface PostMediaProps {
@@ -21,16 +22,41 @@ function domainOf(url: string): string {
   }
 }
 
+// One image in whatever state processing is in. Only the processed, public renditions are ever shown — never the original
+// upload — so until the file is 'ready' there is just a placeholder. `size` picks the rendition: 'thumb' (256px) for feed
+// cards, 'display' (1280px) for the post detail page. Refreshes itself (useLiveMedia) when processing finishes.
+// `lazy` defers loading until near the viewport — only worth it for the long gallery strip; a post's main image is on
+// screen straight away and must start loading at once.
+function LiveImage({ media, className, size, lazy = false }: { media: MediaView | null | undefined; className: string; size: 'thumb' | 'display'; lazy?: boolean }) {
+  const live = useLiveMedia(media);
+  if (!live) return <div className={styles.mediaPlaceholder}>Image unavailable</div>;
+  if (live.processingStatus === 'failed') {
+    return <div className={styles.mediaPlaceholder}>This image couldn't be processed.</div>;
+  }
+  const src = live.processingStatus === 'ready' ? (size === 'display' ? (live.displayUrl ?? live.thumbnailUrl) : (live.thumbnailUrl ?? live.displayUrl)) : null;
+  if (!src) return <div className={styles.mediaPlaceholder}>Image processing…</div>;
+  return <img className={className} src={src} alt="" loading={lazy ? 'lazy' : undefined} />;
+}
+
+function LiveVideo({ media }: { media: MediaView | null | undefined }) {
+  const live = useLiveMedia(media);
+  if (!live) return <div className={styles.mediaPlaceholder}>Video unavailable</div>;
+  if (live.processingStatus === 'failed') {
+    return <div className={styles.mediaPlaceholder}>This video couldn't be processed.</div>;
+  }
+  if (live.processingStatus !== 'ready' || !live.displayUrl) {
+    return <div className={styles.mediaPlaceholder}>Video processing… it will appear here when it's ready.</div>;
+  }
+  return <video className={styles.thumbnail} src={live.displayUrl} poster={live.thumbnailUrl ?? undefined} controls preload="metadata" />;
+}
+
 function renderContent(post: Post, fullBody: boolean) {
   if (post.kind === 'image' || post.kind === 'video') {
-    if (post.media?.processingStatus === 'ready' && post.media.thumbnailUrl) {
-      return post.kind === 'video' ? (
-        <video className={styles.thumbnail} src={post.media.displayUrl ?? undefined} controls />
-      ) : (
-        <img className={styles.thumbnail} src={post.media.thumbnailUrl} alt="" />
-      );
-    }
-    return <div className={styles.mediaPlaceholder}>{post.kind === 'video' ? 'Video processing…' : 'Image processing…'}</div>;
+    return post.kind === 'video' ? (
+      <LiveVideo media={post.media} />
+    ) : (
+      <LiveImage media={post.media} className={styles.thumbnail} size={fullBody ? 'display' : 'thumb'} />
+    );
   }
   if (post.kind === 'gallery' && post.mediaItems && post.mediaItems.length > 0) {
     if (!fullBody) {
@@ -39,11 +65,7 @@ function renderContent(post: Post, fullBody: boolean) {
       const first = post.mediaItems[0];
       return (
         <div className={styles.galleryPreview}>
-          {first.processingStatus === 'ready' && first.thumbnailUrl ? (
-            <img className={styles.thumbnail} src={first.thumbnailUrl} alt="" />
-          ) : (
-            <div className={styles.mediaPlaceholder}>Image processing…</div>
-          )}
+          <LiveImage media={first} className={styles.thumbnail} size="thumb" />
           {post.mediaItems.length > 1 && <span className={styles.galleryCountBadge}>+{post.mediaItems.length - 1}</span>}
         </div>
       );
@@ -51,15 +73,9 @@ function renderContent(post: Post, fullBody: boolean) {
     // Detail page: the full ordered strip, scrollable since a gallery can have up to 20 images.
     return (
       <div className={styles.galleryStrip}>
-        {post.mediaItems.map((item, index) =>
-          item.processingStatus === 'ready' && item.thumbnailUrl ? (
-            <img key={index} className={styles.galleryStripImage} src={item.thumbnailUrl} alt="" loading="lazy" />
-          ) : (
-            <div key={index} className={styles.galleryStripPlaceholder}>
-              Image processing…
-            </div>
-          ),
-        )}
+        {post.mediaItems.map((item, index) => (
+          <LiveImage key={item.id ?? index} media={item} className={styles.galleryStripImage} size="display" lazy={index > 2} />
+        ))}
       </div>
     );
   }

@@ -1,5 +1,8 @@
 export interface MediaView {
+  id: string;
   thumbnailUrl: string | null;
+  // thumbnailUrl (256px) is for feeds/cards, displayUrl (1280px) for the post detail page. Both are null until
+  // processingStatus is 'ready' — the original upload is never exposed.
   displayUrl: string | null;
   width: number | null;
   height: number | null;

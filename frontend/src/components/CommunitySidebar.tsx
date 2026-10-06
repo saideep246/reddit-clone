@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useCommunityImages } from '../hooks/useCommunityImages';
 import type { Community, CommunityRule } from '../types/community';
 import { JoinButton } from './JoinButton';
 import styles from './CommunitySidebar.module.css';
@@ -13,14 +14,15 @@ interface CommunitySidebarProps {
 }
 
 export function CommunitySidebar({ community, rules, actionError, onJoin, onLeave, onRequestJoin }: CommunitySidebarProps) {
+  const { iconUrl, bannerUrl } = useCommunityImages(community);
   const createdDate = new Date(community.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <aside className={styles.sidebar}>
-      {community.bannerUrl && <img className={styles.banner} src={community.bannerUrl} alt="" />}
+      {bannerUrl && <img className={styles.banner} src={bannerUrl} alt="" />}
       <div className={styles.header}>
         <h2 className={styles.name}>
-          {community.iconUrl && <img className={styles.icon} src={community.iconUrl} alt="" />}
+          {iconUrl && <img className={styles.icon} src={iconUrl} alt="" />}
           r/{community.name}
           {community.isModerator && <span className={styles.modBadge}>Mod</span>}
         </h2>

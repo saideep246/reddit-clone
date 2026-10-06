@@ -50,12 +50,20 @@ app:
     # in Docker the app reaches storage as http://s3mock:9090 but the browser needs http://localhost:9000.
     public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:${STORAGE_ENDPOINT:http://localhost:9000}}
     bucket: ${STORAGE_BUCKET:reddit-clone-media}
+    # Bucket CORS (browsers PUT uploads straight to the bucket) is infrastructure: configure it once on the bucket. This
+    # opt-in lets a dev environment have the app add a rule when the bucket has NONE; it never overwrites an existing
+    # policy and is off by default. Production must leave it false (no bucket-admin permission needed).
+    configure-cors: ${STORAGE_CONFIGURE_CORS:false}
+    # Against a real (non-local) bucket, refuse to start if it is unreachable or MEDIA_PUBLIC_BASE_URL still points at
+    # local storage, instead of booting into a state where uploads/images silently break. false = log an error instead.
+    fail-fast: ${STORAGE_FAIL_FAST:true}
     access-key: ${STORAGE_ACCESS_KEY:test}    # s3mock doesn't validate credentials; any non-empty value works locally
     secret-key: ${STORAGE_SECRET_KEY:test}
     region: auto   # R2 has no real regions; the AWS SDK still requires a non-null region string
   media:
     public-base-url: ${MEDIA_PUBLIC_BASE_URL:http://localhost:9000/reddit-clone-media}
     max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:20971520}     # 20MB
+    max-image-pixels: ${MEDIA_MAX_IMAGE_PIXELS:40000000}   # decode limit (width x height), checked from the header: ~120MB of heap per decoded image
     max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:209715200}    # 200MB
   chat:
     max-message-length: ${CHAT_MAX_MESSAGE_LENGTH:4000}

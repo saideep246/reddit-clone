@@ -8,6 +8,7 @@ import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.media.dto.UploadUrlResponse;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ public class MediaService {
     private static final Duration UPLOAD_URL_EXPIRY = Duration.ofMinutes(10);
     private static final int MAX_ATTEMPTS = 5;
 
+    private final ApplicationEventPublisher events;
     private final MediaRepository media;
     private final StorageService storage;
     private final UuidV7Generator ids;
@@ -45,7 +47,9 @@ public class MediaService {
     public MediaService(MediaRepository media, StorageService storage, UuidV7Generator ids, JdbcTemplate jdbc,
                          @Value("${app.media.max-image-bytes}") long maxImageBytes,
                          @Value("${app.media.max-video-bytes}") long maxVideoBytes,
-                         @Value("${app.media.public-base-url}") String publicBaseUrl) {
+                         @Value("${app.media.public-base-url}") String publicBaseUrl,
+                         ApplicationEventPublisher events) {
+        this.events = events;
         this.media = media;
         this.storage = storage;
         this.ids = ids;
@@ -102,10 +106,14 @@ public class MediaService {
                 .orElseThrow(() -> new BadRequestException("upload not found in storage"));
         long maxBytes = "video".equals(m.getMediaType()) ? maxVideoBytes : maxImageBytes;
         if (actualBytes > maxBytes) {
+            // The presigned PUT can't enforce a size limit, so an oversized object does land in the bucket;
+            // discard it rather than leave it behind (the row stays 'pending' and is cleaned up by the reaper).
+            storage.deleteQuietly(m.getR2Key());
             throw new BadRequestException("uploaded object exceeds the max allowed size");
         }
         m.setProcessingStatus("uploaded");
         media.save(m);
+        events.publishEvent(new MediaUploadedEvent(m.getMediaType()));
     }
 
     // Never trust a client-supplied mediaId without checking it resolves to something real, owned by the
@@ -144,7 +152,12 @@ public class MediaService {
             if (!m.getOwnerId().equals(authorId)) {
                 throw new ForbiddenException("not the owner of this media");
             }
-            if (!"uploaded".equals(m.getProcessingStatus()) && !"ready".equals(m.getProcessingStatus())) {
+            // 'processing' is allowed on purpose: the worker flips a file to it within seconds of completion (and a
+            // video stays there for the whole transcode), and the UI already shows a "processing" placeholder until
+            // it is 'ready'. Rejecting it made a quick Post click after an upload fail with a confusing 400.
+            // Only 'pending' (never uploaded) and 'failed' media are unusable.
+            if (!"uploaded".equals(m.getProcessingStatus()) && !"processing".equals(m.getProcessingStatus())
+                    && !"ready".equals(m.getProcessingStatus())) {
                 throw new BadRequestException("media is not ready to attach to a post");
             }
             if (!m.getMediaType().equals(expectedKind)) {
@@ -181,7 +194,13 @@ public class MediaService {
     private MediaView toView(Media m) {
         String thumbnailUrl = m.getThumbnailKey() == null ? null : publicBaseUrl + "/" + m.getThumbnailKey();
         String displayUrl = m.getDisplayKey() == null ? null : publicBaseUrl + "/" + m.getDisplayKey();
-        return new MediaView(thumbnailUrl, displayUrl, m.getWidth(), m.getHeight(), m.getDurationSeconds(), m.getProcessingStatus());
+        return new MediaView(m.getId(), thumbnailUrl, displayUrl, m.getWidth(), m.getHeight(),
+                m.getDurationSeconds(), m.getProcessingStatus());
+    }
+
+    // One media item's current view, for the website to poll while a file is still being processed.
+    public MediaView getView(UUID mediaId) {
+        return toView(media.findById(mediaId).orElseThrow(() -> new NotFoundException("media not found")));
     }
 
     private String sanitizeFilename(String filename) {
@@ -201,13 +220,19 @@ public class MediaService {
     // Atomic claim + flip in one statement (UPDATE ... RETURNING), same FOR UPDATE SKIP LOCKED idiom as
     // OutboxWorker's claim query, scoped to one media_type per call since image/video have very different
     // processing costs and cadences.
+    // minAgeSeconds is 0 for the event-driven path (a file that was just completed). The scheduled RECOVERY path passes
+    // a positive age so it only picks up rows that have sat in 'uploaded' long enough that the event must have been
+    // missed (a restart or crash between commit and processing) — it isn't a second normal path competing for fresh
+    // uploads. Rows are claimed atomically (FOR UPDATE SKIP LOCKED), so even when both paths run, one media item is
+    // never processed twice.
     @Transactional
-    public List<ClaimedMedia> claimUploadedBatch(String mediaType, int batchSize) {
+    public List<ClaimedMedia> claimUploadedBatch(String mediaType, int batchSize, int minAgeSeconds) {
         return jdbc.query("""
                 UPDATE media SET processing_status = 'processing', processing_started_at = now()
                 WHERE id IN (
                     SELECT id FROM media
                     WHERE processing_status = 'uploaded' AND media_type = ?
+                      AND created_at <= now() - make_interval(secs => ?)
                     ORDER BY created_at
                     LIMIT ?
                     FOR UPDATE SKIP LOCKED
@@ -222,7 +247,7 @@ public class MediaService {
                         rs.getLong("byte_size"),
                         rs.getInt("attempt_count"),
                         rs.getString("correlation_id")),
-                mediaType, batchSize);
+                mediaType, minAgeSeconds, batchSize);
     }
 
     @Transactional
@@ -238,6 +263,18 @@ public class MediaService {
         media.save(m);
     }
 
+    // For errors retrying cannot fix (the file isn't a decodable image, or its dimensions are beyond what we will decode):
+    // go straight to the terminal 'failed' state instead of burning all retries first, so the UI shows the failure
+    // promptly and the worker doesn't re-download and re-decode a file that can never succeed.
+    @Transactional
+    public void markFailedPermanently(UUID mediaId, String errorMessage) {
+        Media m = media.findById(mediaId).orElseThrow(() -> new NotFoundException("media not found"));
+        m.setAttemptCount(m.getAttemptCount() + 1);
+        m.setErrorMessage(errorMessage);
+        m.setProcessingStatus("failed");
+        media.save(m);
+    }
+
     // Bounded retry, terminal failed state + a logged error_message — one bad upload must not wedge the
     // queue, and a terminal failure must be diagnosable, not silent. Same lesson as the Phase 2 review's
     // outbox poison-pill finding, applied here from the start rather than discovered later.
@@ -249,6 +286,32 @@ public class MediaService {
         m.setErrorMessage(errorMessage);
         m.setProcessingStatus(attempts >= MAX_ATTEMPTS ? "failed" : "uploaded");
         media.save(m);
+    }
+
+    // Rows still 'pending' long after their upload URL expired were never completed (the user closed the tab, the
+    // PUT failed, ...). Nothing can reference them — attaching media requires 'uploaded'/'processing'/'ready' — so the
+    // row and any partial object are removed instead of accumulating forever.
+    //
+    // Bounded and safe to run repeatedly: ONE short statement deletes at most `batchSize` rows (FOR UPDATE SKIP LOCKED,
+    // so concurrent runs don't collide) and returns their keys; the objects are deleted AFTER that statement commits,
+    // outside any transaction. Deleting the row first means a client that completes the upload at the last moment can
+    // never end up with a live row whose object was just removed (its complete call simply 404s). If an object delete
+    // fails it is only logged — the row is already gone, leaving at worst an orphaned object (see docs/MEDIA_STORAGE.md).
+    // Returns how many rows were removed; the caller loops while a full batch comes back.
+    public int reapAbandonedUploads(int olderThanHours, int batchSize) {
+        List<String> keys = jdbc.query("""
+                WITH doomed AS (
+                    SELECT id FROM media
+                    WHERE processing_status = 'pending' AND created_at < now() - make_interval(hours => ?)
+                    ORDER BY created_at
+                    LIMIT ?
+                    FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM media m USING doomed WHERE m.id = doomed.id AND m.processing_status = 'pending'
+                RETURNING m.r2_key
+                """, (rs, rowNum) -> rs.getString("r2_key"), olderThanHours, batchSize);
+        keys.forEach(storage::deleteQuietly);
+        return keys.size();
     }
 
     // Called by MediaReaperJob. A row can be left at processing_status='processing' forever if the app

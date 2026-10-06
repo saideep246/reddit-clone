@@ -53,9 +53,14 @@ services:
       SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/redditclone                                # migrations -> Postgres directly
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      STORAGE_ENDPOINT: http://s3mock:9090            # what the backend itself talks to
-      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000  # what the browser must reach for presigned uploads
-      MEDIA_PUBLIC_BASE_URL: http://localhost:9000/reddit-clone-media
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://s3mock:9090}
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:9000}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-reddit-clone-media}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-test}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-test}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-http://localhost:9000/reddit-clone-media}
+      STORAGE_CONFIGURE_CORS: ${STORAGE_CONFIGURE_CORS:-false}   # CORS is managed explicitly; set true only for local s3mock if needed
+      RATE_LIMIT_REGISTER_CAPACITY: ${RATE_LIMIT_REGISTER_CAPACITY:-3}   # raise (e.g. 1000) when running scripts/seed_and_verify_*.sh
       CORS_ALLOWED_ORIGINS: http://localhost:5174
       # Uncomment to make a user a site admin at startup (the user must already exist):
       # ADMIN_BOOTSTRAP_USERNAME: yourname

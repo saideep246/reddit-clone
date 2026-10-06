@@ -18,6 +18,9 @@ public class MediaReaperJob {
 
     private static final Logger log = LoggerFactory.getLogger(MediaReaperJob.class);
     private static final int STALE_AFTER_MINUTES = 10;
+    private static final int ABANDONED_AFTER_HOURS = 24;
+    private static final int ABANDONED_BATCH_SIZE = 100;
+    private static final int MAX_ABANDONED_BATCHES = 10;
 
     private final MediaService mediaService;
 
@@ -33,6 +36,19 @@ public class MediaReaperJob {
         // default thread).
         MDC.put(CorrelationIdFilter.MDC_KEY, "job-" + UUID.randomUUID());
         try {
+            // Bounded work per run: whole batches of ABANDONED_BATCH_SIZE, at most MAX_ABANDONED_BATCHES of them. A larger
+            // backlog is simply finished by the next runs (every 5 minutes), never in one long burst.
+            int abandoned = 0;
+            for (int i = 0; i < MAX_ABANDONED_BATCHES; i++) {
+                int removed = mediaService.reapAbandonedUploads(ABANDONED_AFTER_HOURS, ABANDONED_BATCH_SIZE);
+                abandoned += removed;
+                if (removed < ABANDONED_BATCH_SIZE) {
+                    break;
+                }
+            }
+            if (abandoned > 0) {
+                log.info("removed {} abandoned upload(s) that were never completed", abandoned);
+            }
             int reaped = mediaService.reapStaleProcessing(STALE_AFTER_MINUTES);
             if (reaped > 0) {
                 log.warn("reaped {} media row(s) stuck in 'processing' (crash/restart mid-job) back to 'uploaded' or 'failed'", reaped);

@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.event.TransactionPhase;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -28,9 +30,15 @@ public class VideoProcessingWorker {
     private static final Logger log = LoggerFactory.getLogger(VideoProcessingWorker.class);
     private static final int BATCH_SIZE = 2;
     private static final int MAX_OUTPUT_WIDTH = 1280;
+    private static final int RECOVERY_MIN_AGE_SECONDS = 30;
 
     private final MediaService mediaService;
     private final StorageService storage;
+    private final ExecutorService kick = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "video-kick");
+        t.setDaemon(true);
+        return t;
+    });
     private final ExecutorService transcodeExecutor =
             Executors.newFixedThreadPool(2, r -> {
                 Thread t = new Thread(r, "video-transcode");
@@ -43,10 +51,26 @@ public class VideoProcessingWorker {
         this.storage = storage;
     }
 
-    @Scheduled(fixedDelay = 10000)
+    // Normal path: start as soon as the upload commits (see ImageProcessingWorker for the full picture). The pass claims
+    // rows and hands them to the bounded transcode pool; it runs on its own thread so it never delays the request that
+    // completed the upload.
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onUploaded(MediaUploadedEvent event) {
+        if ("video".equals(event.mediaType())) {
+            kick.submit(() -> processBatch(0));
+        }
+    }
+
+    // Recovery path: only media that has sat in 'uploaded' long enough to have missed its event. Claiming is atomic
+    // (FOR UPDATE SKIP LOCKED), so this and the event path can never process the same video twice.
+    @Scheduled(fixedDelay = 30_000)
     @SchedulerLock(name = "videoProcessingWorker", lockAtLeastFor = "5s", lockAtMostFor = "5m")
-    public void processBatch() {
-        List<ClaimedMedia> batch = mediaService.claimUploadedBatch("video", BATCH_SIZE);
+    public void recoverUnprocessed() {
+        processBatch(RECOVERY_MIN_AGE_SECONDS);
+    }
+
+    private void processBatch(int minAgeSeconds) {
+        List<ClaimedMedia> batch = mediaService.claimUploadedBatch("video", BATCH_SIZE, minAgeSeconds);
         for (ClaimedMedia claimed : batch) {
             transcodeExecutor.submit(() -> {
                 // MDC is ThreadLocal — it does NOT cross the scheduler-thread -> video-transcode-pool-

@@ -1,6 +1,7 @@
 package com.redditclone.community;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.redditclone.media.MediaView;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -50,6 +51,15 @@ public class Community {
     // Resolved from the media ids above by CommunityService.attachViewerContext (GET /{name}/about only).
     @Transient
     private String iconUrl;
+
+    // The icon/banner's full media status (id + processingStatus + renditions), so the website can show a placeholder
+    // while a freshly set image is still being processed and pick it up automatically when ready — the same status
+    // mechanism post media uses. iconUrl/bannerUrl above stay for simple consumers and are null until 'ready'.
+    @Transient
+    private MediaView iconMedia;
+
+    @Transient
+    private MediaView bannerMedia;
 
     @Transient
     private String bannerUrl;
@@ -155,6 +165,22 @@ public class Community {
 
     public void setBannerMediaId(UUID bannerMediaId) {
         this.bannerMediaId = bannerMediaId;
+    }
+
+    public MediaView getIconMedia() {
+        return iconMedia;
+    }
+
+    public void setIconMedia(MediaView iconMedia) {
+        this.iconMedia = iconMedia;
+    }
+
+    public MediaView getBannerMedia() {
+        return bannerMedia;
+    }
+
+    public void setBannerMedia(MediaView bannerMedia) {
+        this.bannerMedia = bannerMedia;
     }
 
     public String getIconUrl() {

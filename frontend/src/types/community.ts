@@ -1,3 +1,5 @@
+import type { MediaView } from './post';
+
 export type CommunityType = 'public' | 'restricted' | 'private';
 
 export interface Community {
@@ -9,6 +11,10 @@ export interface Community {
   // Resolved from the community's icon/banner media on GET /r/{name}/about only.
   iconUrl?: string | null;
   bannerUrl?: string | null;
+  // Full media status of the icon/banner, so the site can show a placeholder while one is still processing and update
+  // when it is ready (see hooks/useLiveMedia). iconUrl/bannerUrl are null until then.
+  iconMedia?: MediaView | null;
+  bannerMedia?: MediaView | null;
   subscriberCount: number;
   createdAt: string;
   // Never sent to an anonymous viewer, and never attached at all outside GET /r/{name}/about (e.g. browse

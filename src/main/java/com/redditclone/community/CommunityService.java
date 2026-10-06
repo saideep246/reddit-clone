@@ -470,6 +470,8 @@ public class CommunityService {
         Map<UUID, MediaView> views = mediaService.getMediaViews(mediaIds);
         MediaView icon = views.get(c.getIconMediaId());
         MediaView banner = views.get(c.getBannerMediaId());
+        c.setIconMedia(icon);
+        c.setBannerMedia(banner);
         c.setIconUrl(icon == null ? null : icon.thumbnailUrl() != null ? icon.thumbnailUrl() : icon.displayUrl());
         c.setBannerUrl(banner == null ? null : banner.displayUrl());
     }
