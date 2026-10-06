@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { useEngagement } from '../engagement/EngagementContext';
 import { decodeHtmlEntities } from '../lib/html';
 import { fetchCommentHistory } from '../lib/commentApi';
 import { distinguishComment, stickyComment } from '../lib/moderationApi';
 import { timeAgo } from '../lib/time';
 import type { CommentNode } from '../types/comment';
 import { EditHistoryDialog } from './EditHistoryDialog';
+import { ItemMenu } from './ItemMenu';
 import { OwnContentActions } from './OwnContentActions';
 import { ReplyBox } from './ReplyBox';
 import { VoteControl } from './VoteControl';
@@ -38,6 +40,7 @@ interface CommentThreadProps {
 
 export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onEdit, onDelete, readOnly = false, canModerate = false, communityName, isModerator = false, canSticky = false, onModChanged }: CommentThreadProps) {
   const { user } = useAuth();
+  const { isHidden } = useEngagement();
   const [replying, setReplying] = useState(false);
   const [editing, setEditing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -53,6 +56,7 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
   };
 
   const tombstoned = comment.deleted || comment.removed;
+  if (isHidden('comment', comment.id)) return null;
 
   return (
     <div>
@@ -105,6 +109,7 @@ export function CommentThread({ comment, onVote, onReply, onLoadMoreReplies, onE
                 Reply
               </button>
             )}
+          <ItemMenu targetType="comment" targetId={comment.id} authorId={comment.authorId} live={!tombstoned} compact />
           {communityName && !comment.deleted && !comment.removed && (
             <>
               {canSticky && comment.parentId === null && (

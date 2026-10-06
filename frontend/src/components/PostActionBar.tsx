@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import type { Post } from '../types/post';
 import { CommentIcon, RepostIcon } from './icons';
+import { ItemMenu } from './ItemMenu';
 import { ShareMenu } from './ShareMenu';
 import { VoteControl } from './VoteControl';
 import styles from './PostActionBar.module.css';
@@ -14,6 +15,8 @@ interface PostActionBarProps {
   // On the thread page the comments pill opens the composer instead of navigating; `composing` is its state.
   onCommentClick?: () => void;
   composing?: boolean;
+  // Called after the post is hidden from this bar's overflow menu (the thread page navigates away).
+  onHidden?: () => void;
 }
 
 function compact(n: number): string {
@@ -24,7 +27,7 @@ function compact(n: number): string {
 
 // Reddit's pill row: [vote] [comments] [repost n] [share]. Repost opens the crosspost flow (pick a community,
 // edit the title); Share offers the short link. Tombstoned posts keep only voting/commenting.
-export function PostActionBar({ post, onVote, commentsHref, onCommentClick, composing = false }: PostActionBarProps) {
+export function PostActionBar({ post, onVote, commentsHref, onCommentClick, composing = false, onHidden }: PostActionBarProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const live = !post.deleted && !post.removed;
@@ -68,6 +71,7 @@ export function PostActionBar({ post, onVote, commentsHref, onCommentClick, comp
         </button>
       )}
       {live && <ShareMenu post={post} />}
+      <ItemMenu targetType="post" targetId={post.id} authorId={post.authorId} live={live} onHidden={onHidden} />
     </div>
   );
 }
