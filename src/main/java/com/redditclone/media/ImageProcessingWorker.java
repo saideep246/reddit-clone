@@ -15,6 +15,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import java.awt.Color;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -191,9 +193,33 @@ public class ImageProcessingWorker {
 
     private Resized resize(BufferedImage image, int maxDimension) throws IOException {
         BufferedImage resized = Thumbnails.of(image).size(maxDimension, maxDimension).asBufferedImage();
+        // All renditions are written as JPEG regardless of the source format (PNG, WebP, ...), but the
+        // standard JPEG writer only reliably accepts TYPE_INT_RGB. Several color models ImageIO can
+        // legitimately decode to - any alpha variant (PNG transparency: INT_ARGB(_PRE), 4BYTE_ABGR(_PRE)),
+        // 16-bit grayscale (USHORT_GRAY, no alpha at all) - make it silently return false and write zero
+        // bytes instead of throwing, which was shipping as a "ready" 0-byte file. Re-render into a fresh
+        // TYPE_INT_RGB buffer unconditionally (flattening any alpha onto white) so every decodable input
+        // reaches the writer in the one layout it's guaranteed to handle, instead of allow-listing the
+        // color models known to work today.
+        resized = toJpegSafe(resized);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ImageIO.write(resized, "jpg", out);
+        if (!ImageIO.write(resized, "jpg", out)) {
+            throw new IOException("no JPEG writer could encode the resized image");
+        }
         return new Resized(out.toByteArray(), resized.getWidth(), resized.getHeight(), resized);
+    }
+
+    private static BufferedImage toJpegSafe(BufferedImage image) {
+        if (image.getType() == BufferedImage.TYPE_INT_RGB) {
+            return image;
+        }
+        BufferedImage rgb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = rgb.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, image.getWidth(), image.getHeight());
+        g.drawImage(image, 0, 0, null);
+        g.dispose();
+        return rgb;
     }
 
     private record Resized(byte[] bytes, int width, int height, BufferedImage image) {
