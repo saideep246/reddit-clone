@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { CommentSortDropdown } from '../components/CommentSortDropdown';
 import { CommentThread } from '../components/CommentThread';
@@ -19,6 +19,7 @@ import { hasPermission, PERM_MANAGE_POSTS, PERM_REMOVE_CONTENT } from '../types/
 import styles from './PostDetail.module.css';
 
 export function PostDetail() {
+  const navigate = useNavigate();
   const { communityName = '', postId = '' } = useParams();
   const [searchParams] = useSearchParams();
   // The top-level comment box stays hidden until the comment pill is clicked (or the thread is opened from a
@@ -223,6 +224,7 @@ export function PostDetail() {
             commentsHref={`/r/${communityName}/comments/${postId}`}
             onCommentClick={() => setComposing((c) => !c)}
             composing={composing}
+            onHidden={() => navigate(-1)}
           />
 
           {user && !editingPost && (

@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { useEngagement } from '../engagement/EngagementContext';
 import { decodeHtmlEntities } from '../lib/html';
 import { timeAgo } from '../lib/time';
 import type { Post } from '../types/post';
@@ -15,6 +16,7 @@ interface PostCardProps {
 // clickable through to the thread, and the vote/comment/repost/share pills along the bottom.
 export function PostCard({ post, onVote }: PostCardProps) {
   const navigate = useNavigate();
+  const { isHidden } = useEngagement();
   const detailHref = `/r/${post.communityName ?? 'all'}/comments/${post.id}`;
   const community = post.communityName ?? 'unknown';
 
@@ -24,6 +26,9 @@ export function PostCard({ post, onVote }: PostCardProps) {
     if (window.getSelection()?.toString()) return;
     navigate(detailHref);
   };
+
+  // Hidden this session: drop the card immediately (the backend filters it on the next load).
+  if (isHidden('post', post.id)) return null;
 
   return (
     <article className={styles.card} onClick={open}>
