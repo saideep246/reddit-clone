@@ -9,6 +9,7 @@ interface EngagementContextValue {
   isHidden: (type: TargetType, id: string) => boolean;
   toggleSave: (type: TargetType, id: string) => Promise<void>;
   hide: (type: TargetType, id: string) => Promise<boolean>;
+  markSaved: (type: TargetType, ids: string[]) => void;
 }
 
 const EngagementContext = createContext<EngagementContextValue | null>(null);
@@ -51,6 +52,18 @@ export function EngagementProvider({ children }: { children: React.ReactNode }) 
     [saved, toast],
   );
 
+  // Seeds the saved-set from a known-saved source (the /api/save listing itself) rather than a toggle
+  // click, so a post's Save button reads "Unsave" as soon as the Saved page loads it — otherwise every
+  // post there would show "Save" until clicked, since the set would otherwise only track this session's
+  // own toggles.
+  const markSaved = useCallback((type: TargetType, ids: string[]) => {
+    setSaved((s) => {
+      const next = new Set(s);
+      ids.forEach((id) => next.add(key(type, id)));
+      return next;
+    });
+  }, []);
+
   const hide = useCallback(
     async (type: TargetType, id: string): Promise<boolean> => {
       const k = key(type, id);
@@ -77,7 +90,10 @@ export function EngagementProvider({ children }: { children: React.ReactNode }) 
     [toast],
   );
 
-  const value = useMemo(() => ({ isSaved, isHidden, toggleSave, hide }), [isSaved, isHidden, toggleSave, hide]);
+  const value = useMemo(
+    () => ({ isSaved, isHidden, toggleSave, hide, markSaved }),
+    [isSaved, isHidden, toggleSave, hide, markSaved],
+  );
   return <EngagementContext.Provider value={value}>{children}</EngagementContext.Provider>;
 }
 

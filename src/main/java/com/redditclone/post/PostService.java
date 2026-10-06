@@ -211,6 +211,12 @@ public class PostService {
         return attachAll(posts.findByAuthorId(authorId, cursorCreatedAt, cursorId, viewerId, Pageable.ofSize(limit)));
     }
 
+    // A user's own "saved" tab — same shape as findSubmittedByUsername, but the caller is always the
+    // viewer themselves (no separate viewerId) and the sort key is SavedItem.savedAt, not Post.createdAt.
+    public List<Post> findSavedByUser(UUID userId, Instant cursorSavedAt, UUID cursorId, int limit) {
+        return attachAll(posts.findSavedPage(userId, cursorSavedAt, cursorId, Pageable.ofSize(limit)));
+    }
+
     // Deliberately does NOT attach media — used internally by other services (ban checks, comment-reply's
     // post lookup, moderation target checks) that don't display the post and shouldn't pay for an extra
     // query they don't need. findByIdWithMedia below is for the display path.

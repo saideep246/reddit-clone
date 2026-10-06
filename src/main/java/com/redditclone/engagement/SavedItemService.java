@@ -4,6 +4,7 @@ import com.redditclone.common.exception.BadRequestException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -32,6 +33,15 @@ public class SavedItemService {
     public void unsave(UUID userId, String targetType, UUID targetId) {
         requireValidTargetType(targetType);
         savedItems.deleteByUserIdAndTargetTypeAndTargetId(userId, targetType, targetId);
+    }
+
+    // Used to rebuild the next-page cursor for a "saved" listing: the sort key there is savedAt, which
+    // doesn't live on the Post/Comment entity itself, so the controller fetches it here by the last
+    // page item's id rather than carrying it through PostService's Post-only return type.
+    public Instant savedAtOf(UUID userId, String targetType, UUID targetId) {
+        return savedItems.findByUserIdAndTargetTypeAndTargetId(userId, targetType, targetId)
+                .map(SavedItem::getSavedAt)
+                .orElse(null);
     }
 
     private void requireValidTargetType(String targetType) {
