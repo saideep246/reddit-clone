@@ -1,0 +1,40 @@
+# Production profile — activate with SPRING_PROFILES_ACTIVE=prod (render.yaml does). It exists to fail fast: every value
+# below is a bare ${VAR} with NO default, so a missing production variable stops startup with "Could not resolve
+# placeholder 'VAR'" instead of silently falling back to the localhost / s3mock / dev-secret defaults in application.yml.
+# No secret lives in this file; all values come from the environment.
+server:
+  # Render terminates TLS at its proxy and appends the real client to X-Forwarded-For. Without this, getRemoteAddr()
+  # (what the login/register rate limits are keyed on) would be the proxy's address, i.e. one shared bucket for everyone.
+  forward-headers-strategy: native
+
+spring:
+  datasource:           # Neon POOLED endpoint (host contains "-pooler") for application traffic
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  flyway:               # Neon DIRECT endpoint: migrations take locks/sessions a transaction pooler must not sit in front of
+    url: ${SPRING_FLYWAY_URL}
+    user: ${SPRING_FLYWAY_USER}
+    password: ${SPRING_FLYWAY_PASSWORD}
+    connect-retries: 5  # a scaled-to-zero Neon compute needs a moment to wake
+  data:
+    redis:
+      url: ${REDIS_URL}   # redis:// or rediss:// (TLS) with credentials, as managed Redis providers hand out
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+  auth:
+    cookie:
+      secure: true
+      same-site: ${AUTH_COOKIE_SAME_SITE:None}   # None while SPA and API are on different registrable domains (needs Secure)
+  storage:
+    endpoint: ${STORAGE_ENDPOINT}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:${STORAGE_ENDPOINT}}
+    bucket: ${STORAGE_BUCKET}
+    access-key: ${STORAGE_ACCESS_KEY}
+    secret-key: ${STORAGE_SECRET_KEY}
+  media:
+    public-base-url: ${MEDIA_PUBLIC_BASE_URL}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}

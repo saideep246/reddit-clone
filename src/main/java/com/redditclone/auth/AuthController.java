@@ -24,24 +24,35 @@ public class AuthController {
 
     private static final String REFRESH_COOKIE = "refresh_token";
 
+    // Local dev (http, same-site localhost) keeps Secure=false/SameSite=Strict. Production sets app.auth.cookie.* in
+    // application-prod.yml: Secure=true (TLS terminates at the platform proxy) and, while the SPA and API sit on
+    // different registrable domains (e.g. *.pages.dev -> *.onrender.com), SameSite=None, which browsers only accept
+    // together with Secure. Behind a shared parent domain (app.example.com / api.example.com) Strict/Lax works again.
+
     private final AuthService auth;
     private final RateLimiter rateLimiter;
     private final int loginCapacity;
     private final int loginPeriodMinutes;
     private final int registerCapacity;
     private final int registerPeriodMinutes;
+    private final boolean cookieSecure;
+    private final String cookieSameSite;
 
     public AuthController(AuthService auth, RateLimiter rateLimiter,
                            @Value("${app.rate-limit.login.capacity}") int loginCapacity,
                            @Value("${app.rate-limit.login.period-minutes}") int loginPeriodMinutes,
                            @Value("${app.rate-limit.register.capacity}") int registerCapacity,
-                           @Value("${app.rate-limit.register.period-minutes}") int registerPeriodMinutes) {
+                           @Value("${app.rate-limit.register.period-minutes}") int registerPeriodMinutes,
+                           @Value("${app.auth.cookie.secure:false}") boolean cookieSecure,
+                           @Value("${app.auth.cookie.same-site:Strict}") String cookieSameSite) {
         this.auth = auth;
         this.rateLimiter = rateLimiter;
         this.loginCapacity = loginCapacity;
         this.loginPeriodMinutes = loginPeriodMinutes;
         this.registerCapacity = registerCapacity;
         this.registerPeriodMinutes = registerPeriodMinutes;
+        this.cookieSecure = cookieSecure;
+        this.cookieSameSite = cookieSameSite;
     }
 
     // Keyed by IP, not by the submitted username — keying by username would let an attacker lock a victim
@@ -75,8 +86,8 @@ public class AuthController {
         }
         ResponseCookie expired = ResponseCookie.from(REFRESH_COOKIE, "")
                 .httpOnly(true)
-                .secure(false) // flip to true once Caddy/TLS terminates the connection (Phase 5)
-                .sameSite("Strict")
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .path("/api/v1")
                 .maxAge(0)
                 .build();
@@ -86,8 +97,8 @@ public class AuthController {
     private ResponseEntity<AuthResponse> withRefreshCookie(TokenPair tokens) {
         ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, tokens.rawRefreshToken())
                 .httpOnly(true)
-                .secure(false) // flip to true once Caddy/TLS terminates the connection (Phase 5)
-                .sameSite("Strict")
+                .secure(cookieSecure)
+                .sameSite(cookieSameSite)
                 .path("/api/v1")
                 .maxAge(Duration.ofDays(30))
                 .build();

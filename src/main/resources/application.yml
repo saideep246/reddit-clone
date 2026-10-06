@@ -1,5 +1,5 @@
 server:
-  port: 8081   # 8080 is occupied by an unrelated process on this machine
+  port: ${PORT:8081}   # PaaS platforms (Render) inject PORT; locally 8081 (8080 is occupied by an unrelated process on this machine)
 
 logging:
   pattern:
@@ -45,6 +45,10 @@ app:
   jwt:
     secret: ${JWT_SECRET:dev-only-change-me-32-bytes-minimum!}
     access-ttl-minutes: 15
+  auth:
+    cookie:   # refresh-token cookie; production overrides in application-prod.yml
+      secure: ${AUTH_COOKIE_SECURE:false}
+      same-site: ${AUTH_COOKIE_SAME_SITE:Strict}
   admin:
     # If set, SystemAccountBootstrap promotes this username to site admin on every startup (idempotent —
     # a no-op once they already are one). Empty by default: no admin exists until explicitly configured.

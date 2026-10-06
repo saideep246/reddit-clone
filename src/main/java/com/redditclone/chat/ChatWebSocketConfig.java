@@ -16,6 +16,8 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+import java.util.Arrays;
+
 // The WebSocket handshake itself (SecurityConfig permits /ws/** at the HTTP layer) is a plain HTTP GET
 // that a browser-native WebSocket client cannot attach an Authorization header to — real authentication
 // happens one layer up, at the first STOMP frame (CONNECT), which does carry its own headers. This is the
@@ -33,7 +35,7 @@ public class ChatWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     public ChatWebSocketConfig(JwtService jwtService, @Value("${app.cors.allowed-origins}") String allowedOrigins) {
         this.jwtService = jwtService;
-        this.allowedOrigins = allowedOrigins.split(",");
+        this.allowedOrigins = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(o -> !o.isEmpty()).toArray(String[]::new);
     }
 
     @Override
