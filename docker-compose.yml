@@ -51,8 +51,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:6432/redditclone?stringtype=unspecified   # app traffic -> PgBouncer
       SPRING_FLYWAY_URL: jdbc:postgresql://postgres:5432/redditclone                                # migrations -> Postgres directly
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_URL: ${SPRING_DATA_REDIS_URL:-redis://redis:6379}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://s3mock:9090}
       STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:9000}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-reddit-clone-media}
