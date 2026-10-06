@@ -19,15 +19,8 @@ import java.time.Duration;
 public class RateLimitConfig {
 
     @Bean
-    RedisClient rateLimitRedisClient(@Value("${spring.data.redis.host}") String host,
-                                      @Value("${spring.data.redis.port}") int port,
-                                      @Value("${spring.data.redis.password:}") String password,
-                                      @Value("${spring.data.redis.ssl.enabled:false}") boolean sslEnabled) {
-        RedisURI.Builder uriBuilder = RedisURI.Builder.redis(host, port).withSsl(sslEnabled);
-        if (!password.isBlank()) {
-            uriBuilder.withPassword((CharSequence) password);
-        }
-        return RedisClient.create(uriBuilder.build());
+    RedisClient rateLimitRedisClient(@Value("${spring.data.redis.url}") String redisUrl) {
+        return RedisClient.create(RedisURI.create(redisUrl));
     }
 
     // expirationAfterWrite puts a TTL on each bucket's Redis key (one key per distinct rate-limited
