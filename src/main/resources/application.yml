@@ -1,5 +1,5 @@
 server:
-  port: ${PORT:8081}   # PaaS platforms (Render) inject PORT; locally 8081 (8080 is occupied by an unrelated process on this machine)
+  port: ${PORT:8081}   # PaaS platforms (e.g. Railway) inject PORT; locally 8081 (8080 is occupied by an unrelated process on this machine)
 
 logging:
   pattern:
@@ -39,9 +39,23 @@ spring:
       url: ${SPRING_DATA_REDIS_URL:redis://localhost:6380}
 
 app:
+  # Base URL of the frontend SPA, used only to build the links sent in verification/password-reset
+  # emails (e.g. ${app.frontend-url}/verify-email?token=...). Not the same thing as app.cors.allowed-
+  # origins below, which is a (potentially different) list the backend uses to validate incoming
+  # requests, not to construct outgoing links.
+  frontend-url: ${FRONTEND_URL:http://localhost:5174}
   jwt:
     secret: ${JWT_SECRET:dev-only-change-me-32-bytes-minimum!}
     access-ttl-minutes: 15
+  mail:
+    # false lets EmailOutboxWorker drain the queue (logging instead of calling Brevo) without a real API
+    # key — useful for local dev/CI where nobody has configured one. Leave true once BREVO_API_KEY is set.
+    enabled: ${MAIL_ENABLED:true}
+    brevo:
+      api-key: ${BREVO_API_KEY:}
+    from:
+      address: ${MAIL_FROM_ADDRESS:no-reply@reddit-clone.local}
+      name: ${MAIL_FROM_NAME:Reddit Clone}
   auth:
     cookie:   # refresh-token cookie; production overrides in application-prod.yml
       secure: ${AUTH_COOKIE_SECURE:false}
@@ -84,6 +98,12 @@ app:
     register:
       capacity: ${RATE_LIMIT_REGISTER_CAPACITY:3}
       period-minutes: ${RATE_LIMIT_REGISTER_PERIOD_MINUTES:60}
+    verify-resend:
+      capacity: ${RATE_LIMIT_VERIFY_RESEND_CAPACITY:3}
+      period-minutes: ${RATE_LIMIT_VERIFY_RESEND_PERIOD_MINUTES:60}
+    password-reset-request:
+      capacity: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_CAPACITY:3}
+      period-minutes: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_PERIOD_MINUTES:60}
 
 management:
   endpoints:

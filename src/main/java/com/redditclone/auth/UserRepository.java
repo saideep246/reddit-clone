@@ -23,6 +23,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByUsername(String username);
 
+    Optional<User> findByEmail(String email);
+
     // Batched counterpart to findByUsername, for resolving several u/{username} mentions in one query.
     List<User> findByUsernameIn(Set<String> usernames);
 

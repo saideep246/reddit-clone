@@ -1,8 +1,11 @@
 package com.redditclone.auth;
 
 import com.redditclone.auth.dto.AuthResponse;
+import com.redditclone.auth.dto.EmailRequest;
 import com.redditclone.auth.dto.LoginRequest;
+import com.redditclone.auth.dto.PasswordResetConfirmRequest;
 import com.redditclone.auth.dto.RegisterRequest;
+import com.redditclone.auth.dto.VerifyEmailRequest;
 import com.redditclone.common.ratelimit.RateLimiter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -26,7 +29,7 @@ public class AuthController {
 
     // Local dev (http, same-site localhost) keeps Secure=false/SameSite=Strict. Production sets app.auth.cookie.* in
     // application-prod.yml: Secure=true (TLS terminates at the platform proxy) and, while the SPA and API sit on
-    // different registrable domains (e.g. *.pages.dev -> *.onrender.com), SameSite=None, which browsers only accept
+    // different registrable domains (e.g. *.pages.dev -> *.up.railway.app), SameSite=None, which browsers only accept
     // together with Secure. Behind a shared parent domain (app.example.com / api.example.com) Strict/Lax works again.
 
     private final AuthService auth;
@@ -35,6 +38,10 @@ public class AuthController {
     private final int loginPeriodMinutes;
     private final int registerCapacity;
     private final int registerPeriodMinutes;
+    private final int verifyResendCapacity;
+    private final int verifyResendPeriodMinutes;
+    private final int passwordResetRequestCapacity;
+    private final int passwordResetRequestPeriodMinutes;
     private final boolean cookieSecure;
     private final String cookieSameSite;
 
@@ -43,6 +50,10 @@ public class AuthController {
                            @Value("${app.rate-limit.login.period-minutes}") int loginPeriodMinutes,
                            @Value("${app.rate-limit.register.capacity}") int registerCapacity,
                            @Value("${app.rate-limit.register.period-minutes}") int registerPeriodMinutes,
+                           @Value("${app.rate-limit.verify-resend.capacity}") int verifyResendCapacity,
+                           @Value("${app.rate-limit.verify-resend.period-minutes}") int verifyResendPeriodMinutes,
+                           @Value("${app.rate-limit.password-reset-request.capacity}") int passwordResetRequestCapacity,
+                           @Value("${app.rate-limit.password-reset-request.period-minutes}") int passwordResetRequestPeriodMinutes,
                            @Value("${app.auth.cookie.secure:false}") boolean cookieSecure,
                            @Value("${app.auth.cookie.same-site:Strict}") String cookieSameSite) {
         this.auth = auth;
@@ -51,6 +62,10 @@ public class AuthController {
         this.loginPeriodMinutes = loginPeriodMinutes;
         this.registerCapacity = registerCapacity;
         this.registerPeriodMinutes = registerPeriodMinutes;
+        this.verifyResendCapacity = verifyResendCapacity;
+        this.verifyResendPeriodMinutes = verifyResendPeriodMinutes;
+        this.passwordResetRequestCapacity = passwordResetRequestCapacity;
+        this.passwordResetRequestPeriodMinutes = passwordResetRequestPeriodMinutes;
         this.cookieSecure = cookieSecure;
         this.cookieSameSite = cookieSameSite;
     }
@@ -92,6 +107,35 @@ public class AuthController {
                 .maxAge(0)
                 .build();
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, expired.toString()).build();
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest req) {
+        auth.verifyEmail(req.token());
+        return ResponseEntity.ok().build();
+    }
+
+    // Always 200 regardless of whether the email is registered or already verified — see
+    // AuthService.resendVerification's anti-enumeration reasoning.
+    @PostMapping("/verify-email/resend")
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody EmailRequest req, HttpServletRequest request) {
+        rateLimiter.checkLimit("verify-resend", request.getRemoteAddr(), verifyResendCapacity, Duration.ofMinutes(verifyResendPeriodMinutes));
+        auth.resendVerification(req.email());
+        return ResponseEntity.ok().build();
+    }
+
+    // Always 200 regardless of whether the email is registered — same reasoning as resendVerification.
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody EmailRequest req, HttpServletRequest request) {
+        rateLimiter.checkLimit("password-reset-request", request.getRemoteAddr(), passwordResetRequestCapacity, Duration.ofMinutes(passwordResetRequestPeriodMinutes));
+        auth.requestPasswordReset(req.email());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest req) {
+        auth.confirmPasswordReset(req.token(), req.newPassword());
+        return ResponseEntity.ok().build();
     }
 
     private ResponseEntity<AuthResponse> withRefreshCookie(TokenPair tokens) {

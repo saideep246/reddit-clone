@@ -22,6 +22,7 @@ export function Settings() {
   const [deleting, setDeleting] = useState(false);
 
   const restrictChatToKnown = settings?.privacyPrefs.restrictChatToKnown === true;
+  const emailNotifications = settings?.privacyPrefs.emailNotifications === true;
 
   const handleDelete = async (e: FormEvent) => {
     e.preventDefault();
@@ -87,6 +88,15 @@ export function Settings() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Notifications</h2>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={emailNotifications}
+            disabled={!settings}
+            onChange={(e) => updatePrivacyPrefs({ emailNotifications: e.target.checked })}
+          />
+          Also email me about notifications
+        </label>
         <NotificationPrefsForm />
       </section>
 
