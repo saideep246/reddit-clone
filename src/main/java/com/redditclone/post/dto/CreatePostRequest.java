@@ -50,6 +50,12 @@ public record CreatePostRequest(
         return !"link".equals(kind) || (url != null && !url.isBlank());
     }
 
+    @AssertTrue(message = "url must be an http:// or https:// link for kind=link")
+    @JsonIgnore
+    public boolean isUrlSchemeValidForKind() {
+        return !"link".equals(kind) || url == null || url.isBlank() || LinkUrls.isHttpUrl(url);
+    }
+
     @AssertTrue(message = "mediaId is required for kind=image or kind=video, and must be absent otherwise")
     @JsonIgnore
     public boolean isMediaValidForKind() {

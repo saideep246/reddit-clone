@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLiveMedia } from '../hooks/useLiveMedia';
 import { decodeHtmlEntities } from '../lib/html';
+import { isSafeHttpUrl } from '../lib/url';
 import { useSettings } from '../settings/SettingsContext';
 import { CrosspostEmbed } from './CrosspostEmbed';
 import { PollBlock } from './PollBlock';
@@ -86,7 +87,17 @@ function renderContent(post: Post, fullBody: boolean) {
     return <CrosspostEmbed parent={post.crosspostParent} />;
   }
   if (post.kind === 'link' && post.url) {
-    return <div className={styles.domain}>({domainOf(post.url)})</div>;
+    const domain = `(${domainOf(post.url)})`;
+    if (!isSafeHttpUrl(post.url)) {
+      return <div className={styles.domain}>{domain}</div>;
+    }
+    return (
+      <div className={styles.domain}>
+        <a className={styles.domainLink} href={post.url} target="_blank" rel="noopener noreferrer">
+          {domain}
+        </a>
+      </div>
+    );
   }
   if (post.kind === 'text' && post.body) {
     const snippetClass = fullBody ? styles.snippet : `${styles.snippet} ${styles.snippetTruncated}`;
