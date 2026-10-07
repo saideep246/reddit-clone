@@ -56,6 +56,15 @@
   font-size: 13px;
 }
 
+.success {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
 .submit {
   width: 100%;
   height: 40px;

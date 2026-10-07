@@ -1,10 +1,11 @@
-# Production profile — activate with SPRING_PROFILES_ACTIVE=prod (render.yaml does). It exists to fail fast: every value
-# below is a bare ${VAR} with NO default, so a missing production variable stops startup with "Could not resolve
-# placeholder 'VAR'" instead of silently falling back to the localhost / s3mock / dev-secret defaults in application.yml.
-# No secret lives in this file; all values come from the environment.
+# Production profile — activate with SPRING_PROFILES_ACTIVE=prod (the deploy platform's own config does). It exists to
+# fail fast: every value below is a bare ${VAR} with NO default, so a missing production variable stops startup with
+# "Could not resolve placeholder 'VAR'" instead of silently falling back to the localhost / s3mock / dev-secret
+# defaults in application.yml. No secret lives in this file; all values come from the environment.
 server:
-  # Render terminates TLS at its proxy and appends the real client to X-Forwarded-For. Without this, getRemoteAddr()
-  # (what the login/register rate limits are keyed on) would be the proxy's address, i.e. one shared bucket for everyone.
+  # The deploy platform (e.g. Railway) terminates TLS at its proxy and appends the real client to X-Forwarded-For.
+  # Without this, getRemoteAddr() (what the login/register rate limits are keyed on) would be the proxy's address,
+  # i.e. one shared bucket for everyone.
   forward-headers-strategy: native
 
 spring:
@@ -22,8 +23,16 @@ spring:
       url: ${REDIS_URL}   # redis:// or rediss:// (TLS) with credentials, as managed Redis providers hand out
 
 app:
+  frontend-url: ${FRONTEND_URL}
   jwt:
     secret: ${JWT_SECRET}
+  mail:
+    enabled: ${MAIL_ENABLED:true}
+    brevo:
+      api-key: ${BREVO_API_KEY}
+    from:
+      address: ${MAIL_FROM_ADDRESS}
+      name: ${MAIL_FROM_NAME:Reddit Clone}
   auth:
     cookie:
       secure: true

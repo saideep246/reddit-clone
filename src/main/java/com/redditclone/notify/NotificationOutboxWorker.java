@@ -8,6 +8,7 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -38,14 +39,17 @@ public class NotificationOutboxWorker {
     private final ObjectMapper json;
     private final OutboxWriter outboxWriter;
     private final AuthService authService;
+    private final String frontendUrl;
 
     public NotificationOutboxWorker(JdbcTemplate jdbc, UuidV7Generator ids, ObjectMapper json,
-                                     OutboxWriter outboxWriter, AuthService authService) {
+                                     OutboxWriter outboxWriter, AuthService authService,
+                                     @Value("${app.frontend-url}") String frontendUrl) {
         this.jdbc = jdbc;
         this.ids = ids;
         this.json = json;
         this.outboxWriter = outboxWriter;
         this.authService = authService;
+        this.frontendUrl = frontendUrl;
     }
 
     @Scheduled(fixedDelay = 2000)
@@ -99,6 +103,22 @@ public class NotificationOutboxWorker {
         // processed_at marking below for every other, otherwise-valid event in the batch.
         try {
             outboxWriter.insertNotifications(rows);
+            // Only reached once the in-app rows actually exist — an email for a notification that never
+            // made it into the inbox would be confusing, so this piggybacks on the same try, not a
+            // separate best-effort pass.
+            for (Object[] row : rows) {
+                UUID userId = (UUID) row[1];
+                String type = (String) row[2];
+                if (authService.wantsEmailNotification(userId, type)) {
+                    authService.findEmailRecipient(userId).ifPresent(recipient -> outboxWriter.writeEvent("email", Map.of(
+                            "kind", "notification",
+                            "to", recipient.email(),
+                            "toName", recipient.username(),
+                            "type", type,
+                            "link", frontendUrl + "/notifications"
+                    )));
+                }
+            }
         } catch (Exception e) {
             log.warn("failed to insert {} notification row(s) from this batch: {}", rows.size(), e.getMessage());
         }

@@ -12,6 +12,7 @@ export function Register() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [registered, setRegistered] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -19,10 +20,12 @@ export function Register() {
     setSubmitting(true);
     try {
       await register(username, email, password);
-      navigate('/');
+      // Brief confirmation before landing on the home feed — the account is already usable (register
+      // auto-logs in), this just surfaces that a verification email was also sent.
+      setRegistered(true);
+      setTimeout(() => navigate('/'), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -32,6 +35,9 @@ export function Register() {
       <div className={styles.card}>
         <h1 className={styles.title}>Sign Up</h1>
         {error && <p className={styles.error}>{error}</p>}
+        {registered ? (
+          <p className={styles.success}>Welcome! We've also sent a link to verify your email.</p>
+        ) : (
         <form onSubmit={handleSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="username">
@@ -83,6 +89,7 @@ export function Register() {
             {submitting ? 'Signing Up…' : 'Sign Up'}
           </button>
         </form>
+        )}
         <p className={styles.footer}>
           Already a redditor? <Link to="/login">Log In</Link>
         </p>
