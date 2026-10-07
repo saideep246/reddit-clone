@@ -81,13 +81,16 @@ public class StorageService {
     // File-based counterparts of get()/put(byte[]) for large objects (videos): the object is streamed between the bucket
     // and a local file, never held in the Java heap. get()/put(byte[]) copy the whole object at least twice, which is fine
     // for a 20MB image but not for a video of up to 200MB. `target` must not already exist (the SDK refuses to overwrite).
-    public void downloadToFile(String key, Path target) {
-        s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build(), ResponseTransformer.toFile(target));
+    // `timeout` bounds the WHOLE call (all retries and the body transfer, via the SDK's apiCallTimeout), so a stalled
+    // connection cannot hold a worker thread past its job's deadline.
+    public void downloadToFile(String key, Path target, Duration timeout) {
+        s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key)
+                .overrideConfiguration(c -> c.apiCallTimeout(timeout)).build(), ResponseTransformer.toFile(target));
     }
 
-    public void putFile(String key, Path source, String contentType) {
-        s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
-                RequestBody.fromFile(source));
+    public void putFile(String key, Path source, String contentType, Duration timeout) {
+        s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType)
+                .overrideConfiguration(c -> c.apiCallTimeout(timeout)).build(), RequestBody.fromFile(source));
     }
 
     public void deleteQuietly(String key) {

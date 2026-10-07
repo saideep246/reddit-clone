@@ -250,6 +250,45 @@ public class MediaService {
                 mediaType, minAgeSeconds, batchSize);
     }
 
+    // Claim for the one-at-a-time video worker: the same atomic claim as claimUploadedBatch (one UPDATE ... RETURNING over a
+    // FOR UPDATE SKIP LOCKED subselect, so concurrent instances can never take the same row), with two additions that stop
+    // a repeatedly failing video from sitting ahead of healthy ones:
+    //  - ORDER BY attempt_count, created_at: fresh uploads (0 attempts) go before retries, and within the same attempt count
+    //    it is still oldest first. markFailedOrRetry puts a failed row back to 'uploaded', and before this it was the
+    //    oldest row, so it was claimed first on every pass and every other video waited until it reached 'failed'.
+    //  - a retry waits attempt_count * 30 seconds after its previous attempt began (processing_started_at, stamped at
+    //    claim time and left in place by markFailedOrRetry). Without it, every upload event would re-claim the failed row
+    //    immediately. Rows with no start time (never claimed, or put back by the reaper, which clears it) are eligible at
+    //    once. Attempts still count and cap exactly as before: this only reads attempt_count, it never changes it.
+    // A retry can wait behind a steady stream of fresh uploads; it is still served whenever none are waiting. Image
+    // processing keeps using claimUploadedBatch unchanged.
+    @Transactional
+    public List<ClaimedMedia> claimNextUploaded(String mediaType, int minAgeSeconds) {
+        return jdbc.query("""
+                UPDATE media SET processing_status = 'processing', processing_started_at = now()
+                WHERE id IN (
+                    SELECT id FROM media
+                    WHERE processing_status = 'uploaded' AND media_type = ?
+                      AND created_at <= now() - make_interval(secs => ?)
+                      AND (processing_started_at IS NULL
+                           OR processing_started_at <= now() - make_interval(secs => attempt_count * 30))
+                    ORDER BY attempt_count, created_at
+                    LIMIT 1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id, owner_id, media_type, r2_key, content_type, byte_size, attempt_count, correlation_id
+                """, (rs, rowNum) -> new ClaimedMedia(
+                        (UUID) rs.getObject("id"),
+                        (UUID) rs.getObject("owner_id"),
+                        rs.getString("media_type"),
+                        rs.getString("r2_key"),
+                        rs.getString("content_type"),
+                        rs.getLong("byte_size"),
+                        rs.getInt("attempt_count"),
+                        rs.getString("correlation_id")),
+                mediaType, minAgeSeconds);
+    }
+
     @Transactional
     public void markReady(UUID mediaId, String thumbnailKey, String displayKey,
                            Integer width, Integer height, BigDecimal durationSeconds) {

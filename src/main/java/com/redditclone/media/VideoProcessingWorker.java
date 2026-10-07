@@ -7,6 +7,7 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
 // Also handles GIFs (routed to media_type=video by MediaService — see its class comment). Video transcoding is
@@ -34,21 +37,29 @@ import java.util.stream.Stream;
 // queue) would leave rows sitting in 'processing' while they wait, with MediaReaperJob's stale-processing clock already
 // running; a long wait could get a queued row reaped, claimed again and processed twice. Other videos simply stay
 // 'uploaded' until this thread comes round to them. Claiming is still the atomic FOR UPDATE SKIP LOCKED statement, so
-// several application instances are safe: each runs at most one transcode and none can take the same row.
+// several application instances are safe: each runs at most one transcode and none can take the same row. Fresh uploads
+// are claimed before retries of failed ones (see MediaService.claimNextUploaded), so one bad video cannot hold up the rest.
 @Component
 public class VideoProcessingWorker {
 
     private static final Logger log = LoggerFactory.getLogger(VideoProcessingWorker.class);
     private static final int RECOVERY_MIN_AGE_SECONDS = 30;
     private static final Duration STALE_TEMP_DIR_AGE = Duration.ofHours(6);
-    static final String TEMP_DIR_PREFIX = "media-";
+    // Specific to this worker: the startup sweep deletes directories by this prefix, so it must not be one that other
+    // software could plausibly use in the system temp directory.
+    static final String TEMP_DIR_PREFIX = "reddit-clone-video-";
+    // A job must be finished (and its row marked ready or failed) before MediaReaperJob would treat it as stuck. The job
+    // gets the reaper's threshold minus this margin, which covers the final database update and clock differences between
+    // the application and the database.
+    private static final int JOB_LIMIT_MARGIN_MINUTES = 2;
 
     private final MediaService mediaService;
     private final StorageService storage;
     private final CommandRunner commands;
     private final int ffmpegThreads;
     private final int ffmpegNice;
-    private final Duration commandTimeout;
+    private final Duration jobBudget;
+    private final LongSupplier nanoClock;
 
     private final ExecutorService transcodeExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "video-transcode");
@@ -59,22 +70,44 @@ public class VideoProcessingWorker {
     private final AtomicBoolean draining = new AtomicBoolean(false);
     private final AtomicBoolean rerun = new AtomicBoolean(false);
 
+    // Two constructors (this one, and the package-private one below that lets tests supply the clock), so Spring must be
+    // told which to use.
+    @Autowired
     public VideoProcessingWorker(MediaService mediaService, StorageService storage, CommandRunner commands,
                                  @Value("${app.media.ffmpeg-threads:2}") int ffmpegThreads,
                                  @Value("${app.media.ffmpeg-nice:10}") int ffmpegNice,
-                                 // Kept below MediaReaperJob's 10-minute stale-processing window, so one job can never
-                                 // still be running when the reaper hands its row to someone else.
-                                 @Value("${app.media.ffmpeg-timeout-minutes:8}") long ffmpegTimeoutMinutes) {
+                                 @Value("${app.media.video-job-timeout-minutes:8}") long jobTimeoutMinutes) {
+        this(mediaService, storage, commands, ffmpegThreads, ffmpegNice, jobTimeoutMinutes, System::nanoTime);
+    }
+
+    VideoProcessingWorker(MediaService mediaService, StorageService storage, CommandRunner commands,
+                          int ffmpegThreads, int ffmpegNice, long jobTimeoutMinutes, LongSupplier nanoClock) {
         this.mediaService = mediaService;
         this.storage = storage;
         this.commands = commands;
         this.ffmpegThreads = Math.max(1, ffmpegThreads);
         this.ffmpegNice = Math.max(0, ffmpegNice);
-        this.commandTimeout = Duration.ofMinutes(Math.max(1, ffmpegTimeoutMinutes));
+        this.nanoClock = nanoClock;
+        // Never longer than the reaper allows, whatever the configured value: a misconfiguration must not be able to let
+        // a job outlive the point at which its row is handed to someone else.
+        long ceiling = MediaReaperJob.STALE_AFTER_MINUTES - JOB_LIMIT_MARGIN_MINUTES;
+        long minutes = Math.max(1, Math.min(jobTimeoutMinutes, ceiling));
+        if (minutes != jobTimeoutMinutes) {
+            log.warn("app.media.video-job-timeout-minutes={} adjusted to {}: a job must finish {} minutes before the "
+                    + "{}-minute stale-processing reaper", jobTimeoutMinutes, minutes, JOB_LIMIT_MARGIN_MINUTES,
+                    MediaReaperJob.STALE_AFTER_MINUTES);
+        }
+        this.jobBudget = Duration.ofMinutes(minutes);
     }
 
-    // A crash or restart mid-job can leave the job's temp directory behind. Only directories this worker creates (the
-    // "media-" prefix) and only old ones are removed, so a job that is genuinely running is never touched.
+    Duration jobBudget() {
+        return jobBudget;
+    }
+
+    // A crash or restart mid-job can leave the job's temp directory behind. Only real directories (never symlinks) with
+    // this worker's own prefix are considered, and only old ones are removed. A job is limited to minutes (see jobBudget)
+    // and runs on this process's one worker thread, which has not started yet when this runs, so a running job's
+    // directory is never touched.
     @PostConstruct
     void sweepStaleTempDirectories() {
         try {
@@ -92,9 +125,9 @@ public class VideoProcessingWorker {
         Instant cutoff = Instant.now().minus(olderThan);
         try (Stream<Path> children = Files.list(root)) {
             for (Path dir : children.filter(p -> p.getFileName().toString().startsWith(TEMP_DIR_PREFIX)
-                    && Files.isDirectory(p)).toList()) {
+                    && !Files.isSymbolicLink(p) && Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)).toList()) {
                 try {
-                    if (Files.getLastModifiedTime(dir).toInstant().isBefore(cutoff)) {
+                    if (Files.getLastModifiedTime(dir, LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) {
                         deleteRecursively(dir);
                         removed++;
                     }
@@ -178,7 +211,7 @@ public class VideoProcessingWorker {
     // Returns false if a job failed, true if the queue was simply drained.
     private boolean drain(int minAgeSeconds) {
         while (!Thread.currentThread().isInterrupted()) {
-            List<ClaimedMedia> claimed = mediaService.claimUploadedBatch("video", 1, minAgeSeconds);
+            List<ClaimedMedia> claimed = mediaService.claimNextUploaded("video", minAgeSeconds);
             if (claimed.isEmpty()) {
                 return true;
             }
@@ -216,7 +249,12 @@ public class VideoProcessingWorker {
     }
 
     // R2 -> temp file -> ffmpeg -> temp file -> R2. No video byte ever sits in the Java heap.
+    //
+    // The whole job runs against one time budget (JobDeadline): every step is handed the time that is left and fails the job
+    // when there is none, so download + encode + probes + uploads together cannot outlast the reaper's stale-processing
+    // threshold, and a stalled R2 connection or a hung ffmpeg cannot hold the single worker thread indefinitely.
     void process(ClaimedMedia claimed) throws IOException, InterruptedException {
+        JobDeadline deadline = new JobDeadline(jobBudget, nanoClock);
         // Created before the download so a failed or interrupted download is cleaned up like any other failure. The
         // directory is unique to this job, so jobs can never touch each other's files.
         Path tempDir = Files.createTempDirectory(TEMP_DIR_PREFIX + claimed.id() + "-");
@@ -224,21 +262,23 @@ public class VideoProcessingWorker {
             Path inputFile = tempDir.resolve("input");
             Path outputFile = tempDir.resolve("output.mp4");
             Path thumbnailFile = tempDir.resolve("thumbnail.jpg");
-            storage.downloadToFile(claimed.r2Key(), inputFile);
+            storage.downloadToFile(claimed.r2Key(), inputFile, deadline.remaining());
 
             // Single normalized H.264 MP4 rendition, no adaptive-bitrate ladder — capped resolution/
             // bitrate keeps one huge upload from producing an equally huge output.
-            commands.run(VideoCommands.transcode(inputFile, outputFile, ffmpegThreads, ffmpegNice), commandTimeout);
-            commands.run(VideoCommands.thumbnail(inputFile, thumbnailFile, ffmpegNice), commandTimeout);
+            commands.run(VideoCommands.transcode(inputFile, outputFile, ffmpegThreads, ffmpegNice), deadline.remaining());
+            commands.run(VideoCommands.thumbnail(inputFile, thumbnailFile, ffmpegNice), deadline.remaining());
 
-            int[] dimensions = probeDimensions(outputFile);
-            BigDecimal duration = probeDuration(outputFile);
+            int[] dimensions = probeDimensions(outputFile, deadline);
+            BigDecimal duration = probeDuration(outputFile, deadline);
 
             String displayKey = claimed.r2Key() + "-display.mp4";
             String thumbnailKey = claimed.r2Key() + "-thumb.jpg";
-            storage.putFile(displayKey, outputFile, "video/mp4");
-            storage.putFile(thumbnailKey, thumbnailFile, "image/jpeg");
+            storage.putFile(displayKey, outputFile, "video/mp4", deadline.remaining());
+            storage.putFile(thumbnailKey, thumbnailFile, "image/jpeg", deadline.remaining());
 
+            // Deliberately not deadline-checked: the uploads are done, and the margin below the reaper threshold exists
+            // for exactly this one short update.
             mediaService.markReady(claimed.id(), thumbnailKey, displayKey,
                     dimensions[0] == 0 ? null : dimensions[0], dimensions[1] == 0 ? null : dimensions[1], duration);
         } finally {
@@ -246,8 +286,8 @@ public class VideoProcessingWorker {
         }
     }
 
-    private int[] probeDimensions(Path file) throws IOException, InterruptedException {
-        String out = commands.run(VideoCommands.probeDimensions(file), commandTimeout).trim();
+    private int[] probeDimensions(Path file, JobDeadline deadline) throws IOException, InterruptedException {
+        String out = commands.run(VideoCommands.probeDimensions(file), deadline.remaining()).trim();
         String[] parts = out.split("x");
         if (parts.length != 2) {
             return new int[]{0, 0};
@@ -259,8 +299,8 @@ public class VideoProcessingWorker {
         }
     }
 
-    private BigDecimal probeDuration(Path file) throws IOException, InterruptedException {
-        String out = commands.run(VideoCommands.probeDuration(file), commandTimeout).trim();
+    private BigDecimal probeDuration(Path file, JobDeadline deadline) throws IOException, InterruptedException {
+        String out = commands.run(VideoCommands.probeDuration(file), deadline.remaining()).trim();
         try {
             return out.isBlank() ? null : new BigDecimal(out);
         } catch (NumberFormatException e) {

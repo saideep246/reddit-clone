@@ -17,7 +17,8 @@ import java.util.UUID;
 public class MediaReaperJob {
 
     private static final Logger log = LoggerFactory.getLogger(MediaReaperJob.class);
-    private static final int STALE_AFTER_MINUTES = 10;
+    // Package-private: VideoProcessingWorker derives its job time limit from this, so the two cannot drift apart.
+    static final int STALE_AFTER_MINUTES = 10;
     private static final int ABANDONED_AFTER_HOURS = 24;
     private static final int ABANDONED_BATCH_SIZE = 100;
     private static final int MAX_ABANDONED_BATCHES = 10;

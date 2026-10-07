@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -47,26 +50,28 @@ class VideoProcessingWorkerTest {
     // media id -> the temp directory the worker created for it (recorded when the download happens)
     private final List<Path> jobDirs = Collections.synchronizedList(new ArrayList<>());
     private final Deque<ClaimedMedia> queue = new ConcurrentLinkedDeque<>();
+    // The worker's deadline clock: tests move time by hand instead of waiting.
+    private final AtomicLong nanoClock = new AtomicLong(1_000_000_000_000L);
 
     @BeforeEach
     void setUp() throws IOException {
         mediaService = mock(MediaService.class);
         storage = mock(StorageService.class);
         runner = new FakeCommandRunner();
-        worker = new VideoProcessingWorker(mediaService, storage, runner, 2, 10, 8);
+        worker = new VideoProcessingWorker(mediaService, storage, runner, 2, 10, 8, nanoClock::get);
 
         doAnswer(inv -> {
             Path target = inv.getArgument(1);
             jobDirs.add(target.getParent());
             Files.writeString(target, "original video bytes");
             return null;
-        }).when(storage).downloadToFile(anyString(), any(Path.class));
+        }).when(storage).downloadToFile(anyString(), any(Path.class), any(Duration.class));
         // like the real upload, the file must exist at the moment it is sent
         doAnswer(inv -> {
             assertTrue(Files.exists(inv.<Path>getArgument(1)), "upload source must exist: " + inv.getArgument(1));
             return null;
-        }).when(storage).putFile(anyString(), any(Path.class), anyString());
-        when(mediaService.claimUploadedBatch(eq("video"), eq(1), anyInt())).thenAnswer(inv -> {
+        }).when(storage).putFile(anyString(), any(Path.class), anyString(), any(Duration.class));
+        when(mediaService.claimNextUploaded(eq("video"), anyInt())).thenAnswer(inv -> {
             ClaimedMedia next = queue.pollFirst();
             return next == null ? List.of() : List.of(next);
         });
@@ -90,9 +95,9 @@ class VideoProcessingWorkerTest {
 
         worker.process(m);
 
-        verify(storage).downloadToFile(eq("u/1/clip.mp4"), any(Path.class));
-        verify(storage).putFile(eq("u/1/clip.mp4-display.mp4"), any(Path.class), eq("video/mp4"));
-        verify(storage).putFile(eq("u/1/clip.mp4-thumb.jpg"), any(Path.class), eq("image/jpeg"));
+        verify(storage).downloadToFile(eq("u/1/clip.mp4"), any(Path.class), any(Duration.class));
+        verify(storage).putFile(eq("u/1/clip.mp4-display.mp4"), any(Path.class), eq("video/mp4"), any(Duration.class));
+        verify(storage).putFile(eq("u/1/clip.mp4-thumb.jpg"), any(Path.class), eq("image/jpeg"), any(Duration.class));
         verify(storage, never()).get(anyString());
         verify(storage, never()).put(anyString(), any(byte[].class), anyString());
         verify(mediaService).markReady(eq(m.id()), eq("u/1/clip.mp4-thumb.jpg"), eq("u/1/clip.mp4-display.mp4"),
@@ -143,26 +148,39 @@ class VideoProcessingWorkerTest {
         runner.failTranscode = new IOException("ffmpeg exited with status 137");
         assertThrows(IOException.class, () -> worker.process(media("k")));
         assertFalse(Files.exists(jobDirs.getFirst()));
-        verify(storage, never()).putFile(anyString(), any(Path.class), anyString());
+        verify(storage, never()).putFile(anyString(), any(Path.class), anyString(), any(Duration.class));
     }
 
     @Test
     void tempDirectoryIsDeletedAfterUploadFailure() {
-        doThrow(new RuntimeException("R2 unavailable")).when(storage).putFile(anyString(), any(Path.class), anyString());
+        doThrow(new RuntimeException("R2 unavailable")).when(storage).putFile(anyString(), any(Path.class), anyString(), any(Duration.class));
         assertThrows(RuntimeException.class, () -> worker.process(media("k")));
         assertFalse(Files.exists(jobDirs.getFirst()));
         verify(mediaService, never()).markReady(any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void tempDirectoryIsDeletedAfterDownloadFailure() {
-        doThrow(new RuntimeException("download failed")).when(storage).downloadToFile(anyString(), any(Path.class));
-        assertThrows(RuntimeException.class, () -> worker.process(media("k")));
-        // the directory exists before the download, so even a failed download leaves nothing behind
-        try (var tmp = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
-            assertTrue(tmp.noneMatch(p -> p.getFileName().toString().startsWith("media-k")));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+    void tempDirectoryIsDeletedAfterDownloadFailure() throws IOException {
+        ClaimedMedia m = media("k");
+        String prefix = VideoProcessingWorker.TEMP_DIR_PREFIX + m.id();
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        // Positive control: while the (failing) download runs, the job's directory really exists in the temp directory.
+        // Without this, "no directory afterwards" would also pass if the worker never created one.
+        AtomicInteger existedDuringDownload = new AtomicInteger();
+        doAnswer(inv -> {
+            existedDuringDownload.set(countDirectoriesWithPrefix(tmp, prefix));
+            throw new RuntimeException("download failed");
+        }).when(storage).downloadToFile(anyString(), any(Path.class), any(Duration.class));
+
+        assertThrows(RuntimeException.class, () -> worker.process(m));
+
+        assertEquals(1, existedDuringDownload.get(), "the job directory must exist before the download starts");
+        assertEquals(0, countDirectoriesWithPrefix(tmp, prefix), "and be removed when the download fails");
+    }
+
+    private static int countDirectoriesWithPrefix(Path dir, String prefix) throws IOException {
+        try (var children = Files.list(dir)) {
+            return (int) children.filter(p -> p.getFileName().toString().startsWith(prefix)).count();
         }
     }
 
@@ -182,20 +200,41 @@ class VideoProcessingWorkerTest {
     }
 
     @Test
-    void sweepRemovesOnlyOldMediaDirectories(@TempDir Path root) throws IOException {
-        Path old = Files.createDirectory(root.resolve("media-old-1"));
+    void sweepRemovesOnlyOldDirectoriesWithTheWorkersOwnPrefix(@TempDir Path root) throws IOException {
+        String prefix = VideoProcessingWorker.TEMP_DIR_PREFIX;
+        Path old = Files.createDirectory(root.resolve(prefix + "old-1"));
         Files.writeString(old.resolve("input"), "x");
-        Path fresh = Files.createDirectory(root.resolve("media-fresh-1"));
+        Path fresh = Files.createDirectory(root.resolve(prefix + "fresh-1"));
+        Path genericMedia = Files.createDirectory(root.resolve("media-old-1"));
         Path foreign = Files.createDirectory(root.resolve("something-else"));
-        Files.setLastModifiedTime(old, FileTime.from(Instant.now().minus(Duration.ofHours(24))));
-        Files.setLastModifiedTime(foreign, FileTime.from(Instant.now().minus(Duration.ofHours(24))));
+        for (Path p : List.of(old, genericMedia, foreign)) {
+            Files.setLastModifiedTime(p, FileTime.from(Instant.now().minus(Duration.ofHours(24))));
+        }
 
         int removed = VideoProcessingWorker.sweepStaleTempDirectories(root, Duration.ofHours(6));
 
         assertEquals(1, removed);
         assertFalse(Files.exists(old));
         assertTrue(Files.exists(fresh), "a recent directory may belong to a job that is running now");
-        assertTrue(Files.exists(foreign), "only this worker's media- directories are ever removed");
+        assertTrue(Files.exists(genericMedia), "a generic media-* directory is not ours and must never be touched");
+        assertTrue(Files.exists(foreign));
+    }
+
+    @Test
+    void sweepSkipsSymlinksAndNeverDeletesThroughThem(@TempDir Path root, @TempDir Path elsewhere) throws IOException {
+        Path precious = Files.createDirectory(elsewhere.resolve("precious"));
+        Path keepMe = Files.writeString(precious.resolve("keep.txt"), "important");
+        Path link = Files.createSymbolicLink(root.resolve(VideoProcessingWorker.TEMP_DIR_PREFIX + "link"), precious);
+        Files.setLastModifiedTime(precious, FileTime.from(Instant.now().minus(Duration.ofHours(24))));
+        Files.setLastModifiedTime(keepMe, FileTime.from(Instant.now().minus(Duration.ofHours(24))));
+        Files.setAttribute(link, "lastModifiedTime", FileTime.from(Instant.now().minus(Duration.ofHours(24))),
+                java.nio.file.LinkOption.NOFOLLOW_LINKS);
+
+        int removed = VideoProcessingWorker.sweepStaleTempDirectories(root, Duration.ofHours(6));
+
+        assertEquals(0, removed);
+        assertTrue(Files.isSymbolicLink(link), "the link itself is left alone");
+        assertTrue(Files.exists(keepMe), "nothing behind the link may be deleted");
     }
 
     // ---- 3 & 4: one transcode at a time, the rest stay queued ----
@@ -214,7 +253,7 @@ class VideoProcessingWorkerTest {
 
         assertEquals(1, runner.transcodeStarted.get(), "second video must not start encoding");
         assertEquals(1, queue.size(), "second video stays queued (still 'uploaded' in the database), not claimed");
-        verify(mediaService, times(1)).claimUploadedBatch(eq("video"), eq(1), anyInt());
+        verify(mediaService, times(1)).claimNextUploaded(eq("video"), anyInt());
 
         runner.release();
         waitUntil(() -> queue.isEmpty() && runner.transcodeFinished.get() == 2);
@@ -254,7 +293,7 @@ class VideoProcessingWorkerTest {
         queue.add(media("img"));
         worker.onUploaded(new MediaUploadedEvent("image"));
         Thread.sleep(200);
-        verify(mediaService, never()).claimUploadedBatch(anyString(), anyInt(), anyInt());
+        verify(mediaService, never()).claimNextUploaded(anyString(), anyInt());
     }
 
     // ---- 9: failure / retry behaviour is preserved ----
@@ -276,7 +315,7 @@ class VideoProcessingWorkerTest {
         waitUntil(() -> mockCalled(() -> verify(mediaService).markFailedOrRetry(eq(failing.id()), anyString())));
         Thread.sleep(400);
 
-        verify(mediaService, times(1)).claimUploadedBatch(eq("video"), eq(1), anyInt());
+        verify(mediaService, times(1)).claimNextUploaded(eq("video"), anyInt());
         verify(mediaService, never()).markReady(eq(other.id()), any(), any(), any(), any(), any());
 
         // the next recovery pass (30s later in production) retries the failed row, then continues with the queue
@@ -291,6 +330,78 @@ class VideoProcessingWorkerTest {
     void failureMessageKeepsTheOriginalFormat() {
         assertEquals("ffmpeg", ProcessCommandRunner.programName(List.of("nice", "-n", "10", "ffmpeg", "-y")));
         assertEquals("ffprobe", ProcessCommandRunner.programName(List.of("ffprobe", "-v")));
+    }
+
+    // ---- job-level deadline ----
+
+    @Test
+    void everyStepGetsOnlyTheTimeThatIsLeftOfOneJobBudget() throws Exception {
+        runner.advanceClockPerCommand = () -> nanoClock.addAndGet(Duration.ofMinutes(1).toNanos());
+
+        worker.process(media("k"));
+
+        // transcode, thumbnail, 2 probes, each taking 1 simulated minute, then two uploads
+        List<Duration> given = new ArrayList<>(runner.timeouts);
+        assertEquals(4, given.size());
+        assertEquals(Duration.ofMinutes(8), worker.jobBudget());
+        assertTrue(given.getFirst().compareTo(Duration.ofMinutes(8)) <= 0, "no step may exceed the whole budget");
+        for (int i = 1; i < given.size(); i++) {
+            assertEquals(Duration.ofMinutes(1), given.get(i - 1).minus(given.get(i)),
+                    "each step is handed what remains after the previous one");
+        }
+        ArgumentCaptor<Duration> upload = ArgumentCaptor.forClass(Duration.class);
+        verify(storage, times(2)).putFile(anyString(), any(Path.class), anyString(), upload.capture());
+        assertTrue(upload.getAllValues().stream().allMatch(d -> d.compareTo(given.getLast()) < 0),
+                "the uploads get less than the last probe did");
+    }
+
+    @Test
+    void aJobThatUsesUpItsBudgetStopsBeforeTheNextStepAndCleansUp() {
+        // the encode "takes" 9 minutes of an 8-minute budget
+        runner.advanceClockPerCommand = () -> nanoClock.addAndGet(Duration.ofMinutes(9).toNanos());
+
+        IOException e = assertThrows(IOException.class, () -> worker.process(media("k")));
+
+        assertTrue(e.getMessage().contains("exceeded its 8-minute time limit"), e.getMessage());
+        assertEquals(1, runner.commands.size(), "no thumbnail, probe or upload may start after the deadline");
+        verify(storage, never()).putFile(anyString(), any(Path.class), anyString(), any(Duration.class));
+        verify(mediaService, never()).markReady(any(), any(), any(), any(), any(), any());
+        assertFalse(Files.exists(jobDirs.getFirst()));
+    }
+
+    @Test
+    void aSlowDownloadCountsAgainstTheSameBudget() throws Exception {
+        doAnswer(inv -> {
+            jobDirs.add(inv.<Path>getArgument(1).getParent());
+            nanoClock.addAndGet(Duration.ofMinutes(9).toNanos());
+            Files.writeString(inv.<Path>getArgument(1), "late");
+            return null;
+        }).when(storage).downloadToFile(anyString(), any(Path.class), any(Duration.class));
+
+        assertThrows(IOException.class, () -> worker.process(media("k")));
+
+        assertTrue(runner.commands.isEmpty(), "ffmpeg must not start once the download has used the budget");
+        assertFalse(Files.exists(jobDirs.getFirst()));
+    }
+
+    @Test
+    void theDownloadIsGivenTheFullBudget() throws Exception {
+        worker.process(media("k"));
+        verify(storage).downloadToFile(anyString(), any(Path.class), argThat(d -> d.equals(Duration.ofMinutes(8))));
+    }
+
+    @Test
+    void theJobLimitCanNeverExceedWhatTheReaperAllows() {
+        long reaperMinutes = MediaReaperJob.STALE_AFTER_MINUTES;
+        for (long configured : new long[]{8, 9, 10, 60, 10_000}) {
+            Duration budget = new VideoProcessingWorker(mediaService, storage, runner, 2, 10, configured, nanoClock::get)
+                    .jobBudget();
+            assertTrue(budget.toMinutes() <= reaperMinutes - 2,
+                    configured + " minutes configured must be capped below the " + reaperMinutes + "-minute reaper");
+        }
+        assertEquals(Duration.ofMinutes(8), new VideoProcessingWorker(mediaService, storage, runner, 2, 10, 60, nanoClock::get).jobBudget());
+        assertEquals(Duration.ofMinutes(5), new VideoProcessingWorker(mediaService, storage, runner, 2, 10, 5, nanoClock::get).jobBudget());
+        assertEquals(Duration.ofMinutes(1), new VideoProcessingWorker(mediaService, storage, runner, 2, 10, 0, nanoClock::get).jobBudget());
     }
 
     // ---- helpers ----
@@ -318,6 +429,8 @@ class VideoProcessingWorkerTest {
     // transcode, and can fail on demand. Counts how many transcodes overlap.
     private static final class FakeCommandRunner implements CommandRunner {
         final List<List<String>> commands = Collections.synchronizedList(new ArrayList<>());
+        final List<Duration> timeouts = Collections.synchronizedList(new ArrayList<>());
+        volatile Runnable advanceClockPerCommand;
         final AtomicInteger transcodeStarted = new AtomicInteger();
         final AtomicInteger transcodeFinished = new AtomicInteger();
         final AtomicInteger maxConcurrentTranscodes = new AtomicInteger();
@@ -338,6 +451,11 @@ class VideoProcessingWorkerTest {
         @Override
         public String run(List<String> command, Duration timeout) throws IOException, InterruptedException {
             commands.add(List.copyOf(command));
+            timeouts.add(timeout);
+            Runnable advance = advanceClockPerCommand;
+            if (advance != null) {
+                advance.run();
+            }
             String program = ProcessCommandRunner.programName(command);
             if ("ffprobe".equals(program)) {
                 return command.contains("stream=width,height") ? "1280x720\n" : "12.5\n";
