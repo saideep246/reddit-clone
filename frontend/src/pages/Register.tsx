@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../lib/apiClient';
 import styles from './AuthForm.module.css';
 
 export function Register() {
   const { register } = useAuth();
-  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,10 +19,9 @@ export function Register() {
     setSubmitting(true);
     try {
       await register(username, email, password);
-      // Brief confirmation before landing on the home feed — the account is already usable (register
-      // auto-logs in), this just surfaces that a verification email was also sent.
+      // No session is issued by register anymore — the account exists but is unverified, so this just
+      // tells the user to check their email and log in themselves once they have.
       setRegistered(true);
-      setTimeout(() => navigate('/'), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
       setSubmitting(false);
@@ -36,7 +34,9 @@ export function Register() {
         <h1 className={styles.title}>Sign Up</h1>
         {error && <p className={styles.error}>{error}</p>}
         {registered ? (
-          <p className={styles.success}>Welcome! We've also sent a link to verify your email.</p>
+          <p className={styles.success}>
+            Check your email to verify your account, then <Link to="/login">log in</Link>.
+          </p>
         ) : (
         <form onSubmit={handleSubmit}>
           <div className={styles.field}>
