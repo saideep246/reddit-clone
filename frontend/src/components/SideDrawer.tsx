@@ -29,6 +29,7 @@ const ICONS = {
   top: icon('M5 21V10M12 21V4M19 21v-8'),
   explore: icon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM15.5 8.5l-2 5-5 2 2-5z'),
   plus: icon('M12 5v14M5 12h14'),
+  manage: icon('M4 6h16M4 12h16M4 18h16'),
   chat: icon('M4 5h16v11H9l-5 4z'),
   bell: icon('M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4'),
   settings: icon('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z'),
@@ -67,6 +68,7 @@ export function SideDrawer({ open, onClose }: SideDrawerProps) {
   const community: DrawerItem[] = [
     { to: '/communities', label: 'Explore', icon: ICONS.explore, active: path === '/communities' },
     { to: '/communities/create', label: 'Start a community', icon: ICONS.plus, active: path === '/communities/create' },
+    ...(user ? [{ to: '/communities/manage', label: 'Manage communities', icon: ICONS.manage, active: path === '/communities/manage' }] : []),
   ];
 
   const account: DrawerItem[] = user

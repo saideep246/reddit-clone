@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { ModerationDashboard } from './pages/ModerationDashboard';
 import { NotificationsInbox } from './pages/NotificationsInbox';
 import { PostDetail } from './pages/PostDetail';
+import { ManageCommunities } from './pages/ManageCommunities';
 import { PostSubmit } from './pages/PostSubmit';
 import { PostRedirect } from './pages/PostRedirect';
 import { ResetPassword } from './pages/ResetPassword';
@@ -50,6 +51,7 @@ function App() {
         <Route path="/r/:communityName" element={<CommunityPage />} />
         <Route path="/communities" element={<CommunityDiscovery />} />
         <Route path="/communities/create" element={<CreateCommunity />} />
+        <Route path="/communities/manage" element={<ManageCommunities />} />
         <Route path="/notifications" element={<NotificationsInbox />} />
         <Route path="/search" element={<Search />} />
         <Route path="/settings" element={<Settings />} />
