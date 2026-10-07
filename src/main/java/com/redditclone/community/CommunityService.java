@@ -778,6 +778,13 @@ public class CommunityService {
         return communities.findPopularPage((int) cursorSubscriberCount, cursorId, Pageable.ofSize(limit));
     }
 
+    // "Manage communities": everything the user has joined, one capped page (a user is unlikely to join more than this).
+    private static final int MAX_JOINED_LISTED = 200;
+
+    public List<Community> listJoined(UUID userId) {
+        return communities.findJoinedBy(userId, Pageable.ofSize(MAX_JOINED_LISTED));
+    }
+
     public List<Community> searchByName(String query) {
         return communities.searchByName(query);
     }

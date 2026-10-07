@@ -92,6 +92,16 @@ public class CommunityController {
         return results;
     }
 
+    // The caller's own joined communities, for the Manage communities page. Authenticated (not in the permit-all list), so a
+    // missing token is a 401. "/mine" is a single literal segment after /r/, like "/search" above, so it cannot collide with any
+    // /{name}/... route.
+    @GetMapping("/mine")
+    public List<Community> mine(@AuthenticationPrincipal UUID userId) {
+        List<Community> joined = communities.listJoined(userId);
+        communities.attachViewerContextBatch(joined, userId);
+        return joined;
+    }
+
     // sort=popular (default) keyed on subscriber_count, sort=new keyed on created_at — reuses
     // RankCursor/RankCursorCodec and Cursor/CursorCodec rather than inventing new pagination machinery,
     // the same two cursor shapes PostController's own multi-sort feeds already share.

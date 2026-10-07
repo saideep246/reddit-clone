@@ -36,6 +36,16 @@ public interface CommunityRepository extends JpaRepository<Community, UUID> {
             nativeQuery = true)
     int markDeleted(@Param("id") UUID id, @Param("actorId") UUID actorId);
 
+    // The communities a user has joined (their memberships), live ones only, alphabetical. Membership is referenced by bare
+    // entity name in JPQL, like the other cross-entity subqueries in this codebase. Capped by the caller's Pageable.
+    @Query("""
+            SELECT c FROM Community c
+            WHERE c.deletedAt IS NULL
+              AND EXISTS (SELECT 1 FROM Membership m WHERE m.communityId = c.id AND m.userId = :userId)
+            ORDER BY c.name ASC, c.id ASC
+            """)
+    List<Community> findJoinedBy(@Param("userId") UUID userId, Pageable limit);
+
     // Browse/discovery — same keyset-pagination shape as every post-feed listing in this codebase. Every
     // community is included regardless of type: existence/description/subscriber count are metadata, the
     // same category GET /flairs, GET /rules and GET /pinned already treat as public even for private

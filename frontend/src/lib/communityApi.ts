@@ -60,3 +60,8 @@ export function updateCommunitySettings(name: string, update: CommunitySettingsU
 export function deleteCommunity(name: string, confirmName: string): Promise<unknown> {
   return api.del(`/r/${name}`, { confirmName });
 }
+
+// The caller's own joined communities (Manage communities page); requires login.
+export function fetchMyCommunities(): Promise<Community[]> {
+  return api.get('/r/mine') as Promise<Community[]>;
+}
