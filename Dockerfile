@@ -20,5 +20,8 @@ COPY --from=build --chown=app:app /workspace/app.jar app.jar
 USER app
 # The port comes from the PORT environment variable (Render injects it; application.yml falls back to 8081 locally).
 EXPOSE 8081
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError"
+# Heap capped at half the container's memory. The other half is deliberate headroom for what the heap setting does not
+# cover: ffmpeg (a separate process, counted against the same container limit), thread stacks, metaspace, Netty/direct
+# buffers. At 70% the heap could grow until ffmpeg had nowhere to go and the kernel killed it (exit status 137).
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError"
 ENTRYPOINT ["java", "-jar", "app.jar"]

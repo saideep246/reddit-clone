@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -17,6 +18,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -76,6 +78,18 @@ public class StorageService {
 
     // Best effort: used to discard an oversized or abandoned upload. A failure here must never fail the request
     // that triggered it — the object is merely orphaned, not harmful.
+    // File-based counterparts of get()/put(byte[]) for large objects (videos): the object is streamed between the bucket
+    // and a local file, never held in the Java heap. get()/put(byte[]) copy the whole object at least twice, which is fine
+    // for a 20MB image but not for a video of up to 200MB. `target` must not already exist (the SDK refuses to overwrite).
+    public void downloadToFile(String key, Path target) {
+        s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build(), ResponseTransformer.toFile(target));
+    }
+
+    public void putFile(String key, Path source, String contentType) {
+        s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).contentType(contentType).build(),
+                RequestBody.fromFile(source));
+    }
+
     public void deleteQuietly(String key) {
         try {
             s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());

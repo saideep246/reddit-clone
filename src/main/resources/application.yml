@@ -71,6 +71,10 @@ app:
     max-image-bytes: ${MEDIA_MAX_IMAGE_BYTES:20971520}     # 20MB
     max-image-pixels: ${MEDIA_MAX_IMAGE_PIXELS:40000000}   # decode limit (width x height), checked from the header: ~120MB of heap per decoded image
     max-video-bytes: ${MEDIA_MAX_VIDEO_BYTES:209715200}    # 200MB
+    # Video transcoding runs one job at a time (see VideoProcessingWorker). These cap what that one ffmpeg may use.
+    ffmpeg-threads: ${MEDIA_FFMPEG_THREADS:2}            # encoder threads; without a limit libx264 uses one per visible core
+    ffmpeg-nice: ${MEDIA_FFMPEG_NICE:10}                 # CPU priority below the web server's; 0 = normal priority
+    ffmpeg-timeout-minutes: ${MEDIA_FFMPEG_TIMEOUT_MINUTES:8}   # per command; must stay under MediaReaperJob's 10-minute stale window
   chat:
     max-message-length: ${CHAT_MAX_MESSAGE_LENGTH:4000}
   moderation:
