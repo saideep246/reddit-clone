@@ -18,6 +18,7 @@ import com.redditclone.media.Media;
 import com.redditclone.media.MediaService;
 import com.redditclone.media.MediaView;
 import com.redditclone.post.dto.CreatePostRequest;
+import com.redditclone.post.dto.LinkUrls;
 import com.redditclone.post.dto.CrosspostParent;
 import com.redditclone.post.dto.PollView;
 import com.redditclone.post.dto.PostEditView;
@@ -268,7 +269,7 @@ public class PostService {
         if (url != null && !"link".equals(p.getKind())) {
             throw new BadRequestException("only link posts have an editable url");
         }
-        if (url != null && !url.matches("^https?://\\S+$")) {
+        if (url != null && !LinkUrls.isHttpUrl(url)) {
             throw new BadRequestException("url must start with http:// or https://");
         }
         if ((title != null || url != null)

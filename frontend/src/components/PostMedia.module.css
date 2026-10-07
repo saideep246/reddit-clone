@@ -83,6 +83,15 @@
   margin-bottom: var(--space-2);
 }
 
+.domainLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.domainLink:hover {
+  text-decoration: underline;
+}
+
 .snippet {
   font-size: 13px;
   color: var(--color-text-secondary);
