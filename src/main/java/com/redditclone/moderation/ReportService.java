@@ -4,6 +4,7 @@ import com.redditclone.comment.CommentService;
 import com.redditclone.common.ModerationAuditWriter;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.BadRequestException;
+import com.redditclone.community.CommunityService;
 import com.redditclone.post.PostService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,14 +21,17 @@ public class ReportService {
     private final CommentService commentService;
     private final UuidV7Generator ids;
     private final ModerationAuditWriter auditWriter;
+    private final CommunityService communityService;
 
     public ReportService(ReportRepository reports, PostService postService, CommentService commentService,
-                          UuidV7Generator ids, ModerationAuditWriter auditWriter) {
+                          UuidV7Generator ids, ModerationAuditWriter auditWriter,
+                          CommunityService communityService) {
         this.reports = reports;
         this.postService = postService;
         this.commentService = commentService;
         this.ids = ids;
         this.auditWriter = auditWriter;
+        this.communityService = communityService;
     }
 
     // communityId is resolved from the target here, never trusted from the client — a report's
@@ -39,6 +43,7 @@ public class ReportService {
             case "comment" -> postService.findById(commentService.findById(targetId).getPostId()).getCommunityId();
             default -> throw new BadRequestException("targetType must be post or comment");
         };
+        communityService.requireActive(communityId); // reports feed the community's mod queue: a deleted community takes none
         Report r = new Report();
         r.setId(ids.nextId());
         r.setTargetType(targetType);

@@ -29,6 +29,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
             WHERE NOT c.removed AND NOT c.deleted AND NOT p.removed AND NOT p.deleted
               AND (c.search_vector @@ websearch_to_tsquery('english', :query)
                    OR c.search_vector @@ to_tsquery('english', :prefixQuery))
+              AND cm.deleted_at IS NULL
               AND (CAST(:communityId AS uuid) IS NULL OR p.community_id = CAST(:communityId AS uuid))
               AND (cm.type <> 'private'
                    OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = :viewerId AND m.community_id = p.community_id)
@@ -282,6 +283,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
               AND (c.createdAt < :cursorCreatedAt OR (c.createdAt = :cursorCreatedAt AND c.id < :cursorId))
               AND (:viewerId IS NULL OR NOT EXISTS (
                   SELECT 1 FROM HiddenItem h WHERE h.userId = :viewerId AND h.targetType = 'comment' AND h.targetId = c.id))
+              AND NOT EXISTS (SELECT 1 FROM Post p, Community cm WHERE p.id = c.postId AND cm.id = p.communityId AND cm.deletedAt IS NOT NULL)
               AND (NOT EXISTS (SELECT 1 FROM Post p, Community cm WHERE p.id = c.postId AND cm.id = p.communityId AND cm.type = 'private')
                    OR EXISTS (SELECT 1 FROM Post p, Membership m WHERE p.id = c.postId AND m.communityId = p.communityId AND m.userId = :viewerId)
                    OR EXISTS (SELECT 1 FROM Post p, CommunityModerator cmod WHERE p.id = c.postId AND cmod.communityId = p.communityId AND cmod.userId = :viewerId))

@@ -9,8 +9,10 @@ import com.redditclone.common.paging.RankCursorCodec;
 import com.redditclone.common.paging.Thing;
 import com.redditclone.community.dto.CommunityRule;
 import com.redditclone.community.dto.CreateCommunityRequest;
+import com.redditclone.community.dto.DeleteCommunityRequest;
 import com.redditclone.community.dto.SetFlairRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -41,6 +44,15 @@ public class CommunityController {
     @PostMapping
     public Community create(@AuthenticationPrincipal UUID userId, @Valid @RequestBody CreateCommunityRequest req) {
         return communities.create(userId, req.name(), req.description(), req.type());
+    }
+
+    // Soft-deletes the community; only its creator may. 204 on success; 400 if confirmName is missing or wrong, 403 if the caller
+    // is not the creator, 404 if the community does not exist or is already deleted.
+    @DeleteMapping("/{name}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@AuthenticationPrincipal UUID userId, @PathVariable String name,
+                       @Valid @RequestBody DeleteCommunityRequest req) {
+        communities.deleteCommunity(userId, communities.findByName(name).getId(), req.confirmName());
     }
 
     @PostMapping("/{name}/subscribe")
