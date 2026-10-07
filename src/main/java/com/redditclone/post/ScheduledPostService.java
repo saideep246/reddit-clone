@@ -81,7 +81,7 @@ public class ScheduledPostService {
                 SELECT s.id, c.name, s.payload->>'title' AS title, s.payload->>'kind' AS kind, s.publish_at,
                        s.status, s.error, s.post_id
                 FROM scheduled_posts s JOIN communities c ON c.id = s.community_id
-                WHERE s.author_id = :u ORDER BY s.publish_at DESC LIMIT 50
+                WHERE s.author_id = :u AND c.deleted_at IS NULL ORDER BY s.publish_at DESC LIMIT 50
                 """, new MapSqlParameterSource("u", authorId),
                 (rs, i) -> new ScheduledPostView(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("title"),
                         rs.getString("kind"), rs.getTimestamp("publish_at").toInstant(), rs.getString("status"),
@@ -112,9 +112,11 @@ public class ScheduledPostService {
         }
         for (Due d : due) {
             try {
-                Post created = requiresNew.execute(status ->
-                        postService.create(d.authorId(), d.communityId(), json.readValue(d.payload(), CreatePostRequest.class),
-                                "scheduled-" + d.id()));
+                Post created = requiresNew.execute(status -> {
+                    requireCommunityStillActive(d.communityId());
+                    return postService.create(d.authorId(), d.communityId(), json.readValue(d.payload(), CreatePostRequest.class),
+                                "scheduled-" + d.id());
+                });
                 markDone(d.id(), "published", null, created == null ? null : created.getId());
             } catch (RuntimeException e) {
                 log.warn("scheduled post {} failed to publish: {}", d.id(), e.getMessage());
@@ -122,6 +124,18 @@ public class ScheduledPostService {
             }
         }
         return due.size();
+    }
+
+    // Re-checks the community immediately before publishing (it may have been deleted since the post was scheduled), inside the
+    // same transaction that publishes. FOR SHARE makes it race-proof: a concurrent delete either committed first (we see
+    // deleted_at and refuse) or has to wait for this transaction to finish before its UPDATE can proceed. Refusing throws, so the
+    // caller records the row as failed with this reason, the existing publish-time-failure path; no post is created.
+    private void requireCommunityStillActive(UUID communityId) {
+        List<Integer> active = jdbc.query("SELECT 1 FROM communities WHERE id = :c AND deleted_at IS NULL FOR SHARE",
+                new MapSqlParameterSource("c", communityId), (rs, i) -> rs.getInt(1));
+        if (active.isEmpty()) {
+            throw new NotFoundException("community was deleted");
+        }
     }
 
     private void markDone(UUID id, String status, String error, UUID postId) {

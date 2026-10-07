@@ -48,6 +48,16 @@ public class Community {
     @Column(name = "banner_media_id")
     private UUID bannerMediaId;
 
+    // Soft delete (V37): both set together when a community is deleted, both null otherwise (enforced by the
+    // communities_deleted_consistency CHECK). Written only by CommunityRepository.markDeleted; every user-facing read and write
+    // path treats a non-null deletedAt as "no such community". Hidden from JSON like rules and the media ids:
+    // this entity is serialized directly by several endpoints, and these must never appear in an API response.
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    @Column(name = "deleted_by")
+    private UUID deletedBy;
+
     // Resolved from the media ids above by CommunityService.attachViewerContext (GET /{name}/about only).
     @Transient
     private String iconUrl;
@@ -165,6 +175,24 @@ public class Community {
 
     public void setBannerMediaId(UUID bannerMediaId) {
         this.bannerMediaId = bannerMediaId;
+    }
+
+    @JsonIgnore
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    @JsonIgnore
+    public UUID getDeletedBy() {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(UUID deletedBy) {
+        this.deletedBy = deletedBy;
     }
 
     public MediaView getIconMedia() {

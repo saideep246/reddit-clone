@@ -5,6 +5,7 @@ import com.redditclone.common.OutboxWriter;
 import com.redditclone.common.exception.BadRequestException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.comment.Comment;
+import com.redditclone.community.CommunityService;
 import com.redditclone.post.Post;
 import com.redditclone.post.PostService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,16 +27,24 @@ public class VoteService {
     private final CommentService commentService;
     private final JdbcTemplate jdbc;
     private final OutboxWriter outbox;
+    private final CommunityService communityService;
 
     public VoteService(PostVoteRepository postVotes, CommentVoteRepository commentVotes,
                         PostService postService, CommentService commentService,
-                        JdbcTemplate jdbc, OutboxWriter outbox) {
+                        JdbcTemplate jdbc, OutboxWriter outbox, CommunityService communityService) {
         this.postVotes = postVotes;
         this.commentVotes = commentVotes;
         this.postService = postService;
         this.commentService = commentService;
         this.jdbc = jdbc;
         this.outbox = outbox;
+        this.communityService = communityService;
+    }
+
+    // Votes are keyed by post/comment id, so they never pass through a community-name lookup: check the target's community
+    // here. A vote (cast OR removal) is a write into the community, so a deleted community rejects both with 404.
+    private void requireCommunityActive(UUID postId) {
+        communityService.requireActive(postService.findById(postId).getCommunityId());
     }
 
     @Transactional
@@ -45,6 +54,7 @@ public class VoteService {
         if (post.isDeleted() || post.isRemoved()) {
             throw new NotFoundException("post not found");
         }
+        communityService.requireActive(post.getCommunityId());
         lockVoteKey("post", userId, postId);
         Optional<PostVote> existing = postVotes.findById(new PostVoteId(userId, postId));
         if (existing.isPresent() && existing.get().getDirection() == direction) {
@@ -57,6 +67,7 @@ public class VoteService {
 
     @Transactional
     public void removePostVote(UUID userId, UUID postId) {
+        requireCommunityActive(postId);
         lockVoteKey("post", userId, postId);
         PostVote existing = postVotes.findById(new PostVoteId(userId, postId))
                 .orElseThrow(() -> new NotFoundException("vote not found"));
@@ -71,6 +82,7 @@ public class VoteService {
         if (comment.isDeleted() || comment.isRemoved()) {
             throw new NotFoundException("comment not found");
         }
+        requireCommunityActive(comment.getPostId());
         lockVoteKey("comment", userId, commentId);
         Optional<CommentVote> existing = commentVotes.findById(new CommentVoteId(userId, commentId));
         if (existing.isPresent() && existing.get().getDirection() == direction) {
@@ -83,6 +95,7 @@ public class VoteService {
 
     @Transactional
     public void removeCommentVote(UUID userId, UUID commentId) {
+        requireCommunityActive(commentService.findById(commentId).getPostId());
         lockVoteKey("comment", userId, commentId);
         CommentVote existing = commentVotes.findById(new CommentVoteId(userId, commentId))
                 .orElseThrow(() -> new NotFoundException("vote not found"));

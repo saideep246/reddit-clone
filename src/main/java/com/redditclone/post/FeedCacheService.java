@@ -2,11 +2,14 @@ package com.redditclone.post;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.redditclone.common.CommunityDeletedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -19,6 +22,9 @@ import java.util.Optional;
 public class FeedCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(FeedCacheService.class);
+
+    // PostController.isAllFeed's pseudo-community name; the r/all page is cached under key("all").
+    private static final String ALL_FEED = "all";
 
     private final StringRedisTemplate redis;
     private final Cache<String, String> local = Caffeine.newBuilder()
@@ -57,6 +63,23 @@ public class FeedCacheService {
             log.warn("feed cache write failed, skipping cache", e);
         }
         local.put(cacheKey, json);
+    }
+
+    // After a community is deleted (committed): drop its own cached page and the r/all page (which may list its posts),
+    // from both layers. Only these two keys; every other community's cache is untouched. Fails open like the reads and
+    // writes above: a Redis blip must not turn an already-committed delete into an error (the 45s TTL is the backstop).
+    // Not fallbackExecution: with no surrounding transaction (or a rolled-back one) there is nothing to evict.
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onCommunityDeleted(CommunityDeletedEvent event) {
+        for (String name : new String[]{event.communityName(), ALL_FEED}) {
+            String cacheKey = key(name);
+            local.invalidate(cacheKey);
+            try {
+                redis.delete(cacheKey);
+            } catch (DataAccessException e) {
+                log.warn("feed cache eviction failed for {}, relying on TTL", cacheKey, e);
+            }
+        }
     }
 
     // communities.name is citext (case-insensitive), but this key is built from the raw path variable —

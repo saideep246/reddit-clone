@@ -1,8 +1,10 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMediaUpload } from '../hooks/useMediaUpload';
+import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../lib/apiClient';
 import { updateCommunitySettings } from '../lib/communityApi';
 import type { Community } from '../types/community';
+import { DeleteCommunityDialog } from './DeleteCommunityDialog';
 import styles from './CommunitySettingsTab.module.css';
 
 interface CommunitySettingsTabProps {
@@ -66,9 +68,36 @@ export function CommunitySettingsTab({ community, canManage, onSaved }: Communit
   const [clearBanner, setClearBanner] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const { user } = useAuth();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // Only the creator sees the deletion control: not any moderator, not even one with every permission bit. The backend
+  // enforces this too (403), so this is presentation, not authorization.
+  const isCreator = !!user && user.id === community.creatorId;
+
+  const dangerZone = (
+    <section className={styles.dangerZone} aria-labelledby="community-danger-zone">
+      <h3 id="community-danger-zone" className={styles.dangerTitle}>
+        Danger Zone
+      </h3>
+      <p className={styles.dangerText}>
+        Deleting this community makes it unavailable to everyone. Its existing posts, comments and history are retained, and
+        the name r/{community.name} stays reserved. This cannot simply be undone through the site.
+      </p>
+      <button type="button" className={styles.dangerButton} onClick={() => setConfirmingDelete(true)}>
+        Delete Community
+      </button>
+      {confirmingDelete && <DeleteCommunityDialog communityName={community.name} onClose={() => setConfirmingDelete(false)} />}
+    </section>
+  );
 
   if (!canManage) {
-    return <p className={styles.note}>You don't have permission to change this community's settings.</p>;
+    return (
+      <>
+        <p className={styles.note}>You don't have permission to change this community's settings.</p>
+        {isCreator && dangerZone}
+      </>
+    );
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -97,6 +126,7 @@ export function CommunitySettingsTab({ community, canManage, onSaved }: Communit
   };
 
   return (
+    <>
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.field}>
         <label className={styles.label} htmlFor="community-description">
@@ -135,5 +165,7 @@ export function CommunitySettingsTab({ community, canManage, onSaved }: Communit
       </button>
       {message && <p className={message.kind === 'ok' ? styles.ok : styles.error}>{message.text}</p>}
     </form>
+    {isCreator && dangerZone}
+    </>
   );
 }

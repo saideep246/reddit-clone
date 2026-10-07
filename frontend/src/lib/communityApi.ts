@@ -54,3 +54,9 @@ export interface CommunitySettingsUpdate {
 export function updateCommunitySettings(name: string, update: CommunitySettingsUpdate): Promise<unknown> {
   return api.patch(`/r/${name}/mod/settings`, update);
 }
+
+// Creator-only soft delete. confirmName must match the community's name exactly (the backend compares case-sensitively);
+// resolves on 204 with no body.
+export function deleteCommunity(name: string, confirmName: string): Promise<unknown> {
+  return api.del(`/r/${name}`, { confirmName });
+}

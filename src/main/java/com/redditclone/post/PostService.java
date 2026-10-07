@@ -646,8 +646,9 @@ public class PostService {
         List<UUID> postIds = page.stream().map(Post::getId).toList();
         Map<UUID, Integer> reposts = new HashMap<>();
         jdbc.query("""
-                SELECT crosspost_of, count(*) AS n FROM posts
-                WHERE crosspost_of IN (:ids) AND NOT removed AND NOT deleted GROUP BY crosspost_of
+                SELECT p.crosspost_of, count(*) AS n FROM posts p JOIN communities c ON c.id = p.community_id
+                WHERE p.crosspost_of IN (:ids) AND NOT p.removed AND NOT p.deleted AND c.deleted_at IS NULL
+                GROUP BY p.crosspost_of
                 """, new MapSqlParameterSource("ids", postIds),
                 rs -> {
                     reposts.put(rs.getObject("crosspost_of", UUID.class), rs.getInt("n"));
@@ -807,12 +808,13 @@ public class PostService {
         }
         Map<UUID, CrosspostParent> parents = new HashMap<>();
         jdbc.query("""
-                SELECT p.id, p.title, p.kind, p.body, p.url, p.removed, p.deleted, u.username, c.name, c.type
+                SELECT p.id, p.title, p.kind, p.body, p.url, p.removed, p.deleted, u.username, c.name, c.type, c.deleted_at
                 FROM posts p JOIN users u ON u.id = p.author_id JOIN communities c ON c.id = p.community_id
                 WHERE p.id IN (:ids)
                 """, new MapSqlParameterSource("ids", parentIds), rs -> {
             UUID id = rs.getObject("id", UUID.class);
-            boolean available = !rs.getBoolean("removed") && !rs.getBoolean("deleted") && !"private".equals(rs.getString("type"));
+            boolean available = !rs.getBoolean("removed") && !rs.getBoolean("deleted") && !"private".equals(rs.getString("type"))
+                    && rs.getObject("deleted_at") == null; // a deleted community's post is unavailable, like a private one
             String body = rs.getString("body");
             parents.put(id, available
                     ? new CrosspostParent(id, true, rs.getString("title"), rs.getString("kind"),

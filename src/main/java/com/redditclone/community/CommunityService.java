@@ -1,6 +1,7 @@
 package com.redditclone.community;
 
 import com.redditclone.auth.AuthService;
+import com.redditclone.common.CommunityDeletedEvent;
 import com.redditclone.common.ModerationAuditWriter;
 import com.redditclone.media.MediaService;
 import com.redditclone.media.MediaView;
@@ -11,6 +12,7 @@ import com.redditclone.common.exception.ConflictException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.community.dto.CommunityRule;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +56,7 @@ public class CommunityService {
     private final ModerationAuditWriter auditWriter;
     private final AuthService authService;
     private final MediaService mediaService;
+    private final ApplicationEventPublisher events;
     private final ExecutorService regexExecutor =
             Executors.newFixedThreadPool(2, r -> {
                 Thread t = new Thread(r, "automod-regex");
@@ -67,7 +70,7 @@ public class CommunityService {
                              CommunityJoinRequestRepository joinRequests,
                              CommunityApprovedSubmitterRepository approvedSubmitters, UuidV7Generator ids,
                              ObjectMapper json, ModerationAuditWriter auditWriter, AuthService authService,
-                             MediaService mediaService) {
+                             MediaService mediaService, ApplicationEventPublisher events) {
         this.communities = communities;
         this.memberships = memberships;
         this.moderators = moderators;
@@ -81,6 +84,7 @@ public class CommunityService {
         this.auditWriter = auditWriter;
         this.authService = authService;
         this.mediaService = mediaService;
+        this.events = events;
     }
 
     @Transactional
@@ -109,8 +113,12 @@ public class CommunityService {
         return c;
     }
 
+    // The single name -> community resolution behind every /r/{name}/... endpoint. A deleted community resolves exactly like one
+    // that never existed (404), so none of those endpoints (reads or writes) can reach it. The name itself stays reserved:
+    // create() checks existsByName, which deliberately still sees deleted rows.
     public Community findByName(String name) {
-        return communities.findByName(name).orElseThrow(() -> new NotFoundException("no such community"));
+        return communities.findByName(name).filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("no such community"));
     }
 
     @Transactional
@@ -429,7 +437,7 @@ public class CommunityService {
     public Map<UUID, String> findIconUrlsByIds(Set<UUID> communityIds) {
         Map<UUID, UUID> iconMediaByCommunity = new HashMap<>();
         communities.findAllById(communityIds).forEach(c -> {
-            if (c.getIconMediaId() != null) {
+            if (c.getDeletedAt() == null && c.getIconMediaId() != null) {
                 iconMediaByCommunity.put(c.getId(), c.getIconMediaId());
             }
         });
@@ -449,7 +457,12 @@ public class CommunityService {
 
     public Map<UUID, String> findNamesByIds(Set<UUID> communityIds) {
         Map<UUID, String> byId = new HashMap<>();
-        communities.findAllById(communityIds).forEach(c -> byId.put(c.getId(), c.getName()));
+        // Deleted communities are omitted: callers (post cards, notifications) treat a missing name as "no community link".
+        communities.findAllById(communityIds).forEach(c -> {
+            if (c.getDeletedAt() == null) {
+                byId.put(c.getId(), c.getName());
+            }
+        });
         return byId;
     }
 
@@ -474,6 +487,43 @@ public class CommunityService {
         c.setBannerMedia(banner);
         c.setIconUrl(icon == null ? null : icon.thumbnailUrl() != null ? icon.thumbnailUrl() : icon.displayUrl());
         c.setBannerUrl(banner == null ? null : banner.displayUrl());
+    }
+
+    // Soft-deletes a community (V37's deleted_at/deleted_by): nothing is physically removed, because fifteen tables reference
+    // communities(id) with NO ACTION foreign keys, including the audit tables. This records the deletion; once recorded, the
+    // community disappears from reads (findByName, requireViewAccess, listings, search, site-wide queries) and rejects writes
+    // (requirePostAccess, requireActive and the name-based routes via findByName).
+    //
+    // Only the community's CREATOR may delete it (creator_id), not "anyone holding every permission bit": addModerator lets
+    // a moderator who holds every bit hand those bits on, so the bitmask cannot identify the owner. A site admin gets no
+    // override here either, because no community permission check in this codebase consults site-admin status (site-wide
+    // admin actions live in AdminController); a takedown belongs there. Like every other permission check, an account that
+    // is no longer active is refused.
+    //
+    // Order of checks: unknown or already deleted (404), not the creator (403), wrong confirmation (400). Authorization comes
+    // before the confirmation so that a caller who may not delete the community learns nothing about what would be accepted.
+    //
+    // Idempotent and race-safe: the deletion is a single compare-and-set UPDATE (markDeleted), so when two deletes race
+    // exactly one succeeds; the loser gets the same 404 an already-deleted community gets, and writes no audit row.
+    @Transactional
+    public void deleteCommunity(UUID actorId, UUID communityId, String confirmName) {
+        Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        if (c.getDeletedAt() != null) {
+            throw new NotFoundException("no such community");
+        }
+        if (!authService.isActive(actorId) || !c.getCreatorId().equals(actorId)) {
+            throw new ForbiddenException("only the community's creator can delete it");
+        }
+        // Exact, case-sensitive match against the stored name: this is a deliberate confirmation, not a lookup.
+        if (confirmName == null || !c.getName().equals(confirmName)) {
+            throw new BadRequestException("confirmName must exactly match the community name");
+        }
+        if (communities.markDeleted(communityId, actorId) == 0) {
+            throw new NotFoundException("no such community"); // lost a race with another delete
+        }
+        auditWriter.logAction(communityId, actorId, "delete_community", "community", communityId, null);
+        // Listeners run AFTER commit (FeedCacheService evicts the cached feeds); nothing happens if this transaction rolls back.
+        events.publishEvent(new CommunityDeletedEvent(c.getName()));
     }
 
     // Description plus icon/banner, gated by PERM_MANAGE_SETTINGS. Null fields are left unchanged; returns the
@@ -595,8 +645,11 @@ public class CommunityService {
 
     // No-ops for public/restricted. For private, passes for a member or any kind of moderator; a null
     // viewerId (unauthenticated) always fails here, which is exactly the behavior every call site needs.
+    // A deleted community is a 404 here, before the type check, so a deleted private community can never fall through to
+    // the "not private -> allowed" branch and so is never reachable by id (posts, comments) either.
     public void requireViewAccess(UUID viewerId, UUID communityId) {
-        Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        Community c = communities.findById(communityId).filter(x -> x.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("no such community"));
         if (!"private".equals(c.getType())) {
             return;
         }
@@ -616,8 +669,18 @@ public class CommunityService {
         return communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community")).getType();
     }
 
+    // The gate for every write that must target a live community only, for callers that hold a community ID rather than a
+    // name (name-based routes already get this from findByName): a deleted community is a 404, exactly like a missing one.
+    public void requireActive(UUID communityId) {
+        communities.findById(communityId).filter(c -> c.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("no such community"));
+    }
+
+    // Post creation (including crossposts and scheduling) funnels through here. The deleted check comes first, before the
+    // moderator shortcut below, so nobody (moderator or not) can post into a deleted community.
     public void requirePostAccess(UUID authorId, UUID communityId) {
-        Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        Community c = communities.findById(communityId).filter(x -> x.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("no such community"));
         if (moderators.existsByCommunityIdAndUserId(communityId, authorId)) {
             return;
         }
