@@ -10,17 +10,23 @@ export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setUnverified(false);
     setSubmitting(true);
     try {
       await login(username, password);
       navigate('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+      if (err instanceof ApiError && err.message === 'email not verified') {
+        setUnverified(true);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -31,6 +37,11 @@ export function Login() {
       <div className={styles.card}>
         <h1 className={styles.title}>Log In</h1>
         {error && <p className={styles.error}>{error}</p>}
+        {unverified && (
+          <p className={styles.error}>
+            Please verify your email before logging in. <Link to="/verify-email">Resend verification email</Link>.
+          </p>
+        )}
         <form onSubmit={handleSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="username">
@@ -64,6 +75,9 @@ export function Login() {
             {submitting ? 'Logging In…' : 'Log In'}
           </button>
         </form>
+        <p className={styles.footer}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
         <p className={styles.footer}>
           New to reddit? <Link to="/register">Sign Up</Link>
         </p>

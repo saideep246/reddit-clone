@@ -53,14 +53,17 @@ public class OutboxWorker {
     @SchedulerLock(name = "outboxWorker", lockAtLeastFor = "1s", lockAtMostFor = "30s") // only one instance runs this at a time
     @Transactional
     public void processBatch() {
-        // event_type <> 'notification': that slice belongs to notify.NotificationOutboxWorker, which owns
-        // the notifications table's schema knowledge the way this worker owns posts/comments/karma. The
-        // exclusion (rather than an exact allowlist of vote event types) keeps this claim query forward-
-        // compatible with any future non-notification event type, which still falls through to the
-        // existing "unrecognized" warning below exactly as before.
+        // event_type NOT IN ('notification', 'email'): those slices belong to notify.NotificationOutboxWorker
+        // and mail.EmailOutboxWorker respectively, each of which owns its own schema knowledge the way this
+        // worker owns posts/comments/karma. The exclusion (rather than an exact allowlist of vote event
+        // types) keeps this claim query forward-compatible with any future non-vote event type, which still
+        // falls through to the existing "unrecognized" warning below exactly as before. Without excluding
+        // 'email' here too, this worker's wider, unfiltered claim query (FOR UPDATE SKIP LOCKED, no
+        // event_type filter in the WHERE beyond this exclusion) would race mail.EmailOutboxWorker for the
+        // same rows and mark them processed as "unrecognized" before the mail worker ever saw them.
         List<Map<String, Object>> events = jdbc.queryForList("""
                 SELECT id, event_type, payload, correlation_id FROM outbox_events
-                WHERE processed_at IS NULL AND event_type <> 'notification'
+                WHERE processed_at IS NULL AND event_type NOT IN ('notification', 'email')
                 ORDER BY id
                 LIMIT %d
                 FOR UPDATE SKIP LOCKED

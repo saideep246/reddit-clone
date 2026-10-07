@@ -6,6 +6,7 @@ import { ChatRoomList } from './pages/ChatRoomList';
 import { CommunityDiscovery } from './pages/CommunityDiscovery';
 import { CommunityPage } from './pages/CommunityPage';
 import { CreateCommunity } from './pages/CreateCommunity';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { ModerationDashboard } from './pages/ModerationDashboard';
@@ -13,6 +14,7 @@ import { NotificationsInbox } from './pages/NotificationsInbox';
 import { PostDetail } from './pages/PostDetail';
 import { PostSubmit } from './pages/PostSubmit';
 import { PostRedirect } from './pages/PostRedirect';
+import { ResetPassword } from './pages/ResetPassword';
 import { SavedPosts } from './pages/SavedPosts';
 import { ScheduledPosts } from './pages/ScheduledPosts';
 import { Register } from './pages/Register';
@@ -20,6 +22,7 @@ import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { UserConnections } from './pages/UserConnections';
 import { UserProfile } from './pages/UserProfile';
+import { VerifyEmail } from './pages/VerifyEmail';
 
 function App() {
   const { initializing } = useAuth();
@@ -38,6 +41,9 @@ function App() {
         <Route path="/chat/:roomId" element={<ChatRoom />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/r/:communityName/comments/:postId" element={<PostDetail />} />
         <Route path="/r/:communityName/submit" element={<PostSubmit />} />
         <Route path="/r/:communityName/mod" element={<ModerationDashboard />} />

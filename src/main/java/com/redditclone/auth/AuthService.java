@@ -1,9 +1,11 @@
 package com.redditclone.auth;
 
+import com.redditclone.common.OutboxWriter;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.ConflictException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.UnauthorizedException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,20 +32,31 @@ public class AuthService {
     private final UserSettingsRepository userSettings;
     private final RefreshTokenRepository refreshTokens;
     private final AccountActionRepository accountActions;
+    private final EmailVerificationTokenRepository emailVerificationTokens;
+    private final PasswordResetTokenRepository passwordResetTokens;
+    private final OutboxWriter outboxWriter;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final UuidV7Generator ids;
+    private final String frontendUrl;
 
     public AuthService(UserRepository users, UserSettingsRepository userSettings,
                         RefreshTokenRepository refreshTokens, AccountActionRepository accountActions,
-                        PasswordEncoder encoder, JwtService jwt, UuidV7Generator ids) {
+                        EmailVerificationTokenRepository emailVerificationTokens,
+                        PasswordResetTokenRepository passwordResetTokens, OutboxWriter outboxWriter,
+                        PasswordEncoder encoder, JwtService jwt, UuidV7Generator ids,
+                        @Value("${app.frontend-url}") String frontendUrl) {
         this.users = users;
         this.userSettings = userSettings;
         this.refreshTokens = refreshTokens;
         this.accountActions = accountActions;
+        this.emailVerificationTokens = emailVerificationTokens;
+        this.passwordResetTokens = passwordResetTokens;
+        this.outboxWriter = outboxWriter;
         this.encoder = encoder;
         this.jwt = jwt;
         this.ids = ids;
+        this.frontendUrl = frontendUrl;
     }
 
     @Transactional
@@ -65,6 +78,8 @@ public class AuthService {
         settings.setUserId(user.getId());
         userSettings.save(settings);
 
+        issueVerificationEmail(user);
+
         return issueTokens(user, ids.nextId());
     }
 
@@ -78,6 +93,12 @@ public class AuthService {
         // who doesn't even have the right password.
         if (!"active".equals(user.getStatus())) {
             throw new UnauthorizedException("account is not active");
+        }
+        // register() auto-issues tokens directly (bypassing this check) so a brand-new account can use
+        // its first session immediately; every subsequent login goes through here and is locked out until
+        // the owner clicks the link register() just emailed them. See EmailOutboxWorker/verifyEmail.
+        if (user.getEmailVerifiedAt() == null) {
+            throw new UnauthorizedException("email not verified");
         }
         return issueTokens(user, ids.nextId());
     }
@@ -246,6 +267,105 @@ public class AuthService {
         return userSettings.findById(userId)
                 .map(s -> Boolean.TRUE.equals(s.getPrivacyPrefs().get("restrictChatToKnown")))
                 .orElse(false);
+    }
+
+    // Sparse, default-OFF — opposite polarity from wantsNotification's default-on, because an email isn't
+    // a passive inbox view the way the in-app list is: unsolicited mail for every reply/mention would
+    // surprise users who never asked for it. A muted-in-app type (wantsNotification's own check, applied
+    // by NotificationOutboxWorker before this one ever runs) is never emailed either.
+    public boolean wantsEmailNotification(UUID userId, String type) {
+        return userSettings.findById(userId)
+                .map(s -> Boolean.TRUE.equals(s.getPrivacyPrefs().get("emailNotifications")))
+                .orElse(false);
+    }
+
+    // Read by notify.NotificationOutboxWorker to address an "email" outbox event without reaching into
+    // UserRepository directly — see EmailRecipient.
+    public Optional<EmailRecipient> findEmailRecipient(UUID userId) {
+        return users.findById(userId).map(u -> new EmailRecipient(u.getEmail(), u.getUsername()));
+    }
+
+    // Shared by register() (first email) and resendVerification() (a replacement link) — a fresh raw
+    // token is generated every time rather than reusing an unexpired one, same "always issue a new one"
+    // simplicity as issueTokens' refresh-token minting.
+    private void issueVerificationEmail(User user) {
+        String rawToken = UUID.randomUUID().toString();
+        EmailVerificationToken token = new EmailVerificationToken();
+        token.setId(ids.nextId());
+        token.setUserId(user.getId());
+        token.setTokenHash(sha256(rawToken));
+        token.setExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
+        emailVerificationTokens.save(token);
+        outboxWriter.writeEvent("email", Map.of(
+                "kind", "verification",
+                "to", user.getEmail(),
+                "toName", user.getUsername(),
+                "link", frontendUrl + "/verify-email?token=" + rawToken
+        ));
+    }
+
+    @Transactional
+    public void verifyEmail(String rawToken) {
+        EmailVerificationToken token = emailVerificationTokens.findByTokenHash(sha256(rawToken))
+                .orElseThrow(() -> new UnauthorizedException("invalid or expired verification link"));
+        if (token.getUsedAt() != null || token.getExpiresAt().isBefore(Instant.now())) {
+            throw new UnauthorizedException("invalid or expired verification link");
+        }
+        User user = users.findById(token.getUserId())
+                .orElseThrow(() -> new UnauthorizedException("invalid or expired verification link"));
+        token.setUsedAt(Instant.now());
+        emailVerificationTokens.save(token);
+        user.setEmailVerifiedAt(Instant.now());
+        users.save(user);
+    }
+
+    // Silently no-ops for an unknown email or an already-verified account — the controller returns the
+    // exact same response either way, so this can't be used to probe which emails are registered.
+    @Transactional
+    public void resendVerification(String email) {
+        users.findByEmail(email)
+                .filter(u -> u.getEmailVerifiedAt() == null)
+                .ifPresent(this::issueVerificationEmail);
+    }
+
+    // Same anti-enumeration no-op reasoning as resendVerification: the controller's response never reveals
+    // whether the email was found.
+    @Transactional
+    public void requestPasswordReset(String email) {
+        users.findByEmail(email).ifPresent(user -> {
+            String rawToken = UUID.randomUUID().toString();
+            PasswordResetToken token = new PasswordResetToken();
+            token.setId(ids.nextId());
+            token.setUserId(user.getId());
+            token.setTokenHash(sha256(rawToken));
+            token.setExpiresAt(Instant.now().plus(1, ChronoUnit.HOURS));
+            passwordResetTokens.save(token);
+            outboxWriter.writeEvent("email", Map.of(
+                    "kind", "password_reset",
+                    "to", user.getEmail(),
+                    "toName", user.getUsername(),
+                    "link", frontendUrl + "/reset-password?token=" + rawToken
+            ));
+        });
+    }
+
+    // Revokes every refresh-token family afterward (revokeAllForUser, same method banAccount/
+    // deleteAccount already use) — whoever could complete this reset now owns the account going forward,
+    // so any session issued before the reset (possibly by whoever lost control of it) is cut off too.
+    @Transactional
+    public void confirmPasswordReset(String rawToken, String newPassword) {
+        PasswordResetToken token = passwordResetTokens.findByTokenHash(sha256(rawToken))
+                .orElseThrow(() -> new UnauthorizedException("invalid or expired reset link"));
+        if (token.getUsedAt() != null || token.getExpiresAt().isBefore(Instant.now())) {
+            throw new UnauthorizedException("invalid or expired reset link");
+        }
+        User user = users.findById(token.getUserId())
+                .orElseThrow(() -> new UnauthorizedException("invalid or expired reset link"));
+        token.setUsedAt(Instant.now());
+        passwordResetTokens.save(token);
+        user.setPasswordHash(encoder.encode(newPassword));
+        users.save(user);
+        refreshTokens.revokeAllForUser(user.getId());
     }
 
     // Near-identical shape to banAccount: verify the password first (401, no state change, on mismatch —

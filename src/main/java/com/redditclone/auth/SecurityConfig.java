@@ -75,7 +75,8 @@ public class SecurityConfig {
                         // case: an ArithmeticException deep in a query surfaced as a bare 401 to the client).
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/v1/register", "/api/v1/access_token", "/api/v1/access_token/refresh",
-                                "/api/v1/logout")
+                                "/api/v1/logout", "/api/v1/verify-email", "/api/v1/verify-email/resend",
+                                "/api/v1/password-reset/request", "/api/v1/password-reset/confirm")
                         .permitAll()
                         // Reddit's real API lets anyone browse without a token — only actions (vote, submit,
                         // comment, subscribe, save, chat, delete) require one. jwtFilter still runs on these

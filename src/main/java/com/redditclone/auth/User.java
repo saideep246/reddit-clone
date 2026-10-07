@@ -45,6 +45,12 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
+    // Independent of status — tracked separately so a never-verified account can still log in once right
+    // after register() (which auto-issues tokens directly, bypassing login()) without flipping the same
+    // status value every other module's isActive()/permission checks already depend on.
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
     public UUID getId() {
         return id;
     }
@@ -131,5 +137,13 @@ public class User {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getEmailVerifiedAt() {
+        return emailVerifiedAt;
+    }
+
+    public void setEmailVerifiedAt(Instant emailVerifiedAt) {
+        this.emailVerifiedAt = emailVerifiedAt;
     }
 }
