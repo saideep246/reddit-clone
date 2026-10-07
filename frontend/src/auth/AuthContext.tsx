@@ -91,13 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
-  const register = useCallback(
-    async (username: string, email: string, password: string) => {
-      const auth = (await api.post('/api/v1/register', { username, email, password })) as AuthResponse;
-      await applySession(auth);
-    },
-    [applySession],
-  );
+  // No session to apply — the backend no longer logs a new account in (it must be verified first), so
+  // this just creates the account and lets the caller (Register.tsx) send the user to /login.
+  const register = useCallback(async (username: string, email: string, password: string) => {
+    await api.post('/api/v1/register', { username, email, password });
+  }, []);
 
   const logout = useCallback(async () => {
     try {

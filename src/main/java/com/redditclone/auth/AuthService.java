@@ -60,7 +60,7 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenPair register(String username, String email, String rawPassword) {
+    public void register(String username, String email, String rawPassword) {
         if (users.existsByEmail(email)) {
             throw new ConflictException("email in use");
         }
@@ -78,9 +78,11 @@ public class AuthService {
         settings.setUserId(user.getId());
         userSettings.save(settings);
 
+        // No auto-login: issuing tokens here would bypass login()'s verification gate below for the one
+        // session that matters most (the user's very first). Signing up only creates the account and
+        // sends the verification link — the user must come back through login() to get a session, same
+        // as every subsequent login.
         issueVerificationEmail(user);
-
-        return issueTokens(user, ids.nextId());
     }
 
     public TokenPair login(String username, String rawPassword) {
@@ -94,9 +96,9 @@ public class AuthService {
         if (!"active".equals(user.getStatus())) {
             throw new UnauthorizedException("account is not active");
         }
-        // register() auto-issues tokens directly (bypassing this check) so a brand-new account can use
-        // its first session immediately; every subsequent login goes through here and is locked out until
-        // the owner clicks the link register() just emailed them. See EmailOutboxWorker/verifyEmail.
+        // register() never issues tokens (see its own comment) — every session, including the user's
+        // very first, is minted here and is locked out until the owner clicks the link register() emailed
+        // them. See EmailOutboxWorker/verifyEmail.
         if (user.getEmailVerifiedAt() == null) {
             throw new UnauthorizedException("email not verified");
         }

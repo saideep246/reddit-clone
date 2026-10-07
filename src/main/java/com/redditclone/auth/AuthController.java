@@ -74,11 +74,13 @@ public class AuthController {
     // out by deliberately failing login as them from many different IPs, a self-inflicted DoS vector this
     // avoids. getRemoteAddr() only (no X-Forwarded-For): this app has no reverse-proxy layer anywhere in
     // its dev or documented prod config today.
+    // No session is issued here — the account starts unverified, and AuthService.login's own gate is
+    // where "is this email verified" actually gets enforced, for the first login same as every later one.
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
+    public ResponseEntity<Void> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
         rateLimiter.checkLimit("register", request.getRemoteAddr(), registerCapacity, Duration.ofMinutes(registerPeriodMinutes));
-        TokenPair tokens = auth.register(req.username(), req.email(), req.password());
-        return withRefreshCookie(tokens);
+        auth.register(req.username(), req.email(), req.password());
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/access_token")
