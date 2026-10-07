@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext';
 import { DraftsPanel } from '../components/DraftsPanel';
 import { FlairPicker } from '../components/FlairPicker';
+import { useCommunityBrowse } from '../hooks/useCommunityBrowse';
 import { useCommunitySearch } from '../hooks/useCommunitySearch';
 import { useGalleryUpload } from '../hooks/useGalleryUpload';
 import { useMediaUpload } from '../hooks/useMediaUpload';
@@ -25,6 +26,9 @@ export function PostSubmit() {
     return () => clearTimeout(timer);
   }, [pickerQuery]);
   const picker = useCommunitySearch(debouncedPickerQuery);
+  // Shown while the search box is empty, so the picker is never a blank page: the most popular communities.
+  const popular = useCommunityBrowse('popular');
+  const searching = debouncedPickerQuery.trim() !== '';
 
   const [tab, setTab] = useState<Tab>('text');
   const [title, setTitle] = useState('');
@@ -116,10 +120,13 @@ export function PostSubmit() {
             onChange={(e) => setPickerQuery(e.target.value)}
             autoFocus
           />
-          {picker.loading && <p>Loading…</p>}
-          {!picker.loading &&
-            debouncedPickerQuery.trim() &&
-            picker.communities.map((c) => (
+          {(searching ? picker.loading : popular.loading) && <p>Loading…</p>}
+          {searching && picker.error && <p>{picker.error}</p>}
+          {!searching && popular.error && <p>{popular.error}</p>}
+          {!searching && !popular.loading && popular.communities.length > 0 && <p className={styles.communityLabel}>Popular communities</p>}
+          {searching && !picker.loading && !picker.error && picker.communities.length === 0 && <p>No communities found.</p>}
+          {!(searching ? picker.loading : popular.loading) &&
+            (searching ? picker.communities : popular.communities).map((c) => (
               <button key={c.id} type="button" className={styles.pickerResult} onClick={() => navigate(`/r/${c.name}/submit${window.location.search}`)}>
                 <span>r/{c.name}</span>
                 <span>{c.subscriberCount} members</span>
