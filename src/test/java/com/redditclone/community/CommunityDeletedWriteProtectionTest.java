@@ -218,6 +218,7 @@ class CommunityDeletedWriteProtectionTest {
                 Map.entry("POST /r/{name}/mod/mute", "{\"userId\":\"$UUID\"}"),
                 Map.entry("POST /r/{name}/mod/automod-rules", "{\"ruleType\":\"keyword\",\"config\":{\"keywords\":[\"x\"]},\"action\":\"remove\"}"),
                 Map.entry("POST /r/{name}/mod/moderators", "{\"userId\":\"$UUID\",\"permissions\":1}"),
+                Map.entry("POST /r/{name}/mod/moderator-invites", "{\"username\":\"someone\",\"permissions\":1}"),
                 Map.entry("POST /r/{name}/mod/mail", "{\"body\":\"b\"}"),
                 Map.entry("POST /r/{name}/mod/flairs", "{\"text\":\"t\",\"color\":\"#aabbcc\",\"type\":\"post\"}"),
                 Map.entry("PATCH /r/{name}/mod/flairs/{flairId}", "{\"text\":\"t\",\"color\":\"#aabbcc\"}"),

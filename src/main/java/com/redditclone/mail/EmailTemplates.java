@@ -39,16 +39,23 @@ final class EmailTemplates {
         return switch (type) {
             case "reply" -> "You have a new reply";
             case "mention" -> "You were mentioned";
+            case "mod_invite" -> "You've been invited to moderate a community";
             default -> "You have a new notification";
         };
     }
 
-    static String notificationHtml(String username, String link) {
-        return """
+    static String notificationHtml(String username, String link, String type) {
+        // Same wrapper for every type; only the sentence differs. A moderator invitation names what is being asked of the
+        // reader, since "you have a new notification" would not tell them it needs an answer.
+        String message = "mod_invite".equals(type)
+                ? "You've been invited to moderate a community. <a href=\"%s\">Open your notifications</a> to accept or decline."
+                : "You have a new notification. <a href=\"%s\">View it</a>.";
+        return ("""
                 <p>Hi %s,</p>
-                <p>You have a new notification. <a href="%s">View it</a>.</p>
+                <p>""" + message + """
+                </p>
                 <p>You can turn off these emails anytime in Settings.</p>
-                """.formatted(escape(username), link);
+                """).formatted(escape(username), link);
     }
 
     // The only untrusted input these templates interpolate is the username; link values are always

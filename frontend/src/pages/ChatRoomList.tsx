@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useChat } from '../chat/ChatContext';
+import { UserPicker } from '../components/UserPicker';
 import { ApiError } from '../lib/apiClient';
 import { decodeHtmlEntities } from '../lib/html';
 import { timeAgo } from '../lib/time';
@@ -11,28 +12,31 @@ export function ChatRoomList() {
   const { user } = useAuth();
   const { rooms, loadingRooms, startRoom } = useChat();
   const navigate = useNavigate();
-  const [usernamesInput, setUsernamesInput] = useState('');
+  // The people picked for the new chat, in the order chosen. One name starts a direct chat; several start a group.
+  const [picked, setPicked] = useState<string[]>([]);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const unavailable = useMemo(() => Object.fromEntries(picked.map((n) => [n.toLowerCase(), 'Already added'])), [picked]);
+
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();
-    const usernames = usernamesInput
-      .split(',')
-      .map((u) => u.trim())
-      .filter(Boolean);
+    const usernames = picked;
     if (usernames.length === 0) return;
     setStarting(true);
     setError(null);
     try {
       const roomId = await startRoom(usernames);
-      setUsernamesInput('');
+      setPicked([]);
       navigate(`/chat/${roomId}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError('No such user — check the username(s) and try again.');
       } else if (err instanceof ApiError && err.status === 400) {
         setError('A chat needs at least one other person.');
+      } else if (err instanceof ApiError && err.status === 403) {
+        // The server's own rule (blocked, or this person only accepts messages from people they know) is the final word.
+        setError(err.message || 'You can\'t start a chat with this person.');
       } else {
         setError('Could not start that chat.');
       }
@@ -46,14 +50,28 @@ export function ChatRoomList() {
       <h1 className={styles.title}>Chat</h1>
 
       <form className={styles.startForm} onSubmit={handleStart}>
-        <input
-          className={styles.startInput}
-          type="text"
-          placeholder="Username(s), comma-separated"
-          value={usernamesInput}
-          onChange={(e) => setUsernamesInput(e.target.value)}
-        />
-        <button type="submit" className={styles.startButton} disabled={starting || !usernamesInput.trim()}>
+        <div className={styles.startPicker}>
+          <UserPicker
+            label="Start a chat with"
+            purpose="chat"
+            unavailable={unavailable}
+            placeholder="Search by username"
+            onSelect={(hit) => setPicked((prev) => (prev.some((n) => n.toLowerCase() === hit.username.toLowerCase()) ? prev : [...prev, hit.username]))}
+          />
+          {picked.length > 0 && (
+            <ul className={styles.chosen} aria-label="People in this chat">
+              {picked.map((name) => (
+                <li key={name} className={styles.chip}>
+                  u/{name}
+                  <button type="button" className={styles.chipRemove} aria-label={`Remove u/${name}`} onClick={() => setPicked((prev) => prev.filter((n) => n !== name))}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <button type="submit" className={styles.startButton} disabled={starting || picked.length === 0}>
           Start
         </button>
       </form>

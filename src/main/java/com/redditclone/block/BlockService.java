@@ -60,6 +60,11 @@ public class BlockService {
         return blocks.existsByBlockerIdAndBlockedId(blockerId, targetId);
     }
 
+    // Ids only (no username lookup), for callers that just need to leave blocked users out, e.g. the chat user picker.
+    public Set<UUID> blockedIds(UUID blockerId) {
+        return blocks.findByBlockerIdOrderByCreatedAtDesc(blockerId).stream().map(UserBlock::getBlockedId).collect(Collectors.toSet());
+    }
+
     public List<BlockedUser> list(UUID blockerId) {
         List<UserBlock> rows = blocks.findByBlockerIdOrderByCreatedAtDesc(blockerId);
         Map<UUID, String> names = auth.findUsernamesByIds(rows.stream().map(UserBlock::getBlockedId).collect(Collectors.toSet()));
