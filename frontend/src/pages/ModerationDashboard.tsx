@@ -79,9 +79,10 @@ export function ModerationDashboard() {
   }
 
   const canSeeBans = hasPermission(community.myPermissions, PERM_BAN_USERS);
-  const canSeeJoinRequests = hasPermission(community.myPermissions, PERM_MANAGE_ACCESS);
+  // Join requests are membership requests for PRIVATE communities; public and restricted ones never have any, so no tab there.
+  const canSeeJoinRequests = hasPermission(community.myPermissions, PERM_MANAGE_ACCESS) && community.type === 'private';
   // Approved posters only mean something where posting is restricted, so the tab is offered only there.
-  const canSeeApprovedPosters = canSeeJoinRequests && community.type === 'restricted';
+  const canSeeApprovedPosters = hasPermission(community.myPermissions, PERM_MANAGE_ACCESS) && community.type === 'restricted';
   const canManageAutomod = hasPermission(community.myPermissions, PERM_MANAGE_AUTOMOD);
   const canManageSettings = hasPermission(community.myPermissions, PERM_MANAGE_SETTINGS);
   const canManageFlairs = hasPermission(community.myPermissions, PERM_MANAGE_FLAIRS);

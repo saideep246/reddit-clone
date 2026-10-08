@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { DraftsPanel } from '../components/DraftsPanel';
@@ -35,21 +35,21 @@ export function PostSubmit() {
   // Restricted communities: a person who may not post gets the explanation instead of a composer that could never submit.
   // Display only (the server still refuses), so a failed lookup simply shows the composer and lets the server decide.
   const [posting, setPosting] = useState<'checking' | 'blocked' | 'ok'>('checking');
-  useEffect(() => {
+  const [postingPending, setPostingPending] = useState(false);
+  const refreshPosting = useCallback(async () => {
     if (!communityName) return;
-    let cancelled = false;
-    setPosting('checking'); // switching communities must not briefly show the previous one's verdict
-    fetchCommunityAbout(communityName)
-      .then((c) => {
-        if (!cancelled) setPosting(c.type === 'restricted' && c.canPost === false ? 'blocked' : 'ok');
-      })
-      .catch(() => {
-        if (!cancelled) setPosting('ok');
-      });
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const c = await fetchCommunityAbout(communityName);
+      setPostingPending(c.postingRequestPending === true);
+      setPosting(c.type === 'restricted' && c.canPost === false ? 'blocked' : 'ok');
+    } catch {
+      setPosting('ok');
+    }
   }, [communityName]);
+  useEffect(() => {
+    setPosting('checking'); // switching communities must not briefly show the previous one's verdict
+    refreshPosting();
+  }, [refreshPosting]);
 
   const [tab, setTab] = useState<Tab>('text');
   const [title, setTitle] = useState('');
@@ -281,7 +281,7 @@ export function PostSubmit() {
     return (
       <div className={styles.wrapper}>
         <div className={styles.card}>
-          <PostingRestricted communityName={communityName} showBackLink />
+          <PostingRestricted communityName={communityName} pending={postingPending} onChanged={refreshPosting} showBackLink />
         </div>
       </div>
     );

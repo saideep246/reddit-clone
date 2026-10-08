@@ -7,6 +7,8 @@ interface UseApprovedSubmittersResult {
   submitters: ApprovedSubmitterEntry[];
   loading: boolean;
   error: string | null;
+  // Re-reads the list, e.g. after a posting request was approved elsewhere on the page.
+  reload: () => Promise<void>;
   // Both throw an Error with a user-readable message (the server's own text where it has one).
   approve: (userId: string) => Promise<void>;
   remove: (userId: string) => Promise<void>;
@@ -60,5 +62,5 @@ export function useApprovedSubmitters(communityName: string): UseApprovedSubmitt
     [communityName, load],
   );
 
-  return { submitters, loading, error, approve, remove };
+  return { submitters, loading, error, reload: load, approve, remove };
 }

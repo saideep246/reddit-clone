@@ -31,6 +31,18 @@ function describe(n: NotificationItem, pendingInviteIds: Set<string>): { text: s
       const hint = n.source.inviteId && pendingInviteIds.has(n.source.inviteId) ? ' Accept or decline under Moderator invitations.' : '';
       return { text: `u/${actor} invited you to become a moderator${where}.${hint}`, href: null };
     }
+    case 'posting_request':
+      return {
+        text: n.communityName ? `u/${actor} asked for posting approval in r/${n.communityName}.` : `u/${actor} asked for posting approval.`,
+        href: n.communityName ? `/r/${n.communityName}/mod?tab=approved-posters` : null,
+      };
+    case 'posting_decision': {
+      const verdict = n.source.decision === 'approved' ? 'approved' : 'denied';
+      return {
+        text: n.communityName ? `Your request to post in r/${n.communityName} was ${verdict}.` : `Your posting request was ${verdict}.`,
+        href: n.communityName ? `/r/${n.communityName}` : null,
+      };
+    }
     default:
       return { text: 'New notification', href: null };
   }

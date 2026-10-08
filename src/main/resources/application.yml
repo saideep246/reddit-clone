@@ -108,6 +108,10 @@ app:
     password-reset-request:
       capacity: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_CAPACITY:3}
       period-minutes: ${RATE_LIMIT_PASSWORD_RESET_REQUEST_PERIOD_MINUTES:60}
+    # Asking for posting approval notifies moderators, so it is capped per person: a request, cancel, request loop cannot spam them.
+    posting-request:
+      capacity: ${RATE_LIMIT_POSTING_REQUEST_CAPACITY:10}
+      period-minutes: ${RATE_LIMIT_POSTING_REQUEST_PERIOD_MINUTES:60}
     # Per signed-in user; sized for a debounced picker (a burst of keystrokes) while making bulk username harvesting slow.
     user-search:
       capacity: ${RATE_LIMIT_USER_SEARCH_CAPACITY:60}

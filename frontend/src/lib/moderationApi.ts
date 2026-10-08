@@ -1,7 +1,7 @@
 import { api } from './apiClient';
 import type { Flair } from '../types/post';
 import type {
-  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ApprovedSubmitterEntry, ModeratorEntry, ModeratorInviteEntry, ReportEntry } from '../types/moderation';
+  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ApprovedSubmitterEntry, PostingRequestEntry, ModeratorEntry, ModeratorInviteEntry, ReportEntry } from '../types/moderation';
 
 export function fetchModQueue(communityName: string): Promise<ModQueueItem[]> {
   return api.get(`/r/${communityName}/mod/queue`) as Promise<ModQueueItem[]>;
@@ -157,6 +157,19 @@ export function fetchModerators(communityName: string): Promise<ModeratorEntry[]
 // Adding an existing moderator again replaces their permissions, so this doubles as "edit permissions".
 export function saveModerator(communityName: string, userId: string, permissions: number): Promise<unknown> {
   return api.post(`/r/${communityName}/mod/moderators`, { userId, permissions });
+}
+
+// Restricted communities: requests for posting access. Distinct from join requests (membership in a private community).
+export function fetchPostingRequests(communityName: string): Promise<PostingRequestEntry[]> {
+  return api.get(`/r/${communityName}/mod/posting-requests`) as Promise<PostingRequestEntry[]>;
+}
+
+export function approvePostingRequest(communityName: string, userId: string): Promise<unknown> {
+  return api.post(`/r/${communityName}/mod/posting-requests/${userId}/approve`);
+}
+
+export function denyPostingRequest(communityName: string, userId: string): Promise<unknown> {
+  return api.post(`/r/${communityName}/mod/posting-requests/${userId}/deny`);
 }
 
 // Restricted communities: people (besides moderators) who may post. All three need "Manage access".

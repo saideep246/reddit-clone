@@ -24,6 +24,10 @@ const ACTIONS = [
   'cancel_moderator_invite',
   'approved_submitter_added',
   'approved_submitter_removed',
+  'posting_approval_requested',
+  'posting_approval_approved',
+  'posting_approval_denied',
+  'posting_approval_cancelled',
 ];
 
 // Friendly names for the actions that have one; every other action just reads its stored name with spaces. The stored names
@@ -35,6 +39,10 @@ const ACTION_LABELS: Record<string, string> = {
   cancel_moderator_invite: 'Cancelled moderator invitation',
   approved_submitter_added: 'Approved submitter',
   approved_submitter_removed: 'Removed approved submitter',
+  posting_approval_requested: 'Requested posting approval',
+  posting_approval_approved: 'Approved posting access',
+  posting_approval_denied: 'Denied posting approval',
+  posting_approval_cancelled: 'Cancelled posting approval',
 };
 
 function actionLabel(action: string): string {

@@ -33,6 +33,15 @@ export function requestToJoin(name: string): Promise<unknown> {
   return api.post(`/r/${name}/join-requests`);
 }
 
+// Restricted communities: ask a moderator for posting access, or withdraw that request. Not a membership request.
+export function requestPostingApproval(name: string): Promise<unknown> {
+  return api.post(`/r/${name}/posting-requests`);
+}
+
+export function cancelPostingRequest(name: string): Promise<unknown> {
+  return api.del(`/r/${name}/posting-requests`);
+}
+
 export function browseCommunities(sort: CommunityBrowseSort, after?: string | null): Promise<Listing<Community>> {
   const params = new URLSearchParams({ sort });
   if (after) params.set('after', after);

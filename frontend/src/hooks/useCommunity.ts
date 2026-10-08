@@ -16,6 +16,8 @@ interface UseCommunityResult {
   join: () => Promise<void>;
   leave: () => Promise<void>;
   requestJoin: () => Promise<void>;
+  // Re-reads the community in place (no loading state), e.g. after a posting request changes or to notice an approval.
+  refreshCommunity: () => Promise<void>;
   applyPinnedVote: (postId: string, dir: 1 | -1) => void;
 }
 
@@ -102,6 +104,14 @@ export function useCommunity(name: string): UseCommunityResult {
     }
   }, [community, name]);
 
+  const refreshCommunity = useCallback(async () => {
+    try {
+      setCommunity(await fetchCommunityAbout(name));
+    } catch {
+      // Keep what is shown; the next refresh tries again.
+    }
+  }, [name]);
+
   // Pinned posts come from their own fetch (GET /r/{name}/pinned), not useFeed's `posts` list — a pinned
   // post may or may not also appear in the regular sorted feed below, so its vote state has to be tracked
   // here, not borrowed from useFeed.applyVote (which only knows about its own list). Same optimistic
@@ -126,5 +136,5 @@ export function useCommunity(name: string): UseCommunityResult {
     });
   }, []);
 
-  return { community, rules, pinned, loading, error, actionError, join, leave, requestJoin, applyPinnedVote };
+  return { community, rules, pinned, loading, error, actionError, join, leave, requestJoin, refreshCommunity, applyPinnedVote };
 }

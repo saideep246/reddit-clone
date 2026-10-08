@@ -53,6 +53,7 @@ public class CommunityService {
     private final FlairRepository flairs;
     private final CommunityJoinRequestRepository joinRequests;
     private final CommunityApprovedSubmitterRepository approvedSubmitters;
+    private final PostingApprovalRequestRepository postingRequests;
     private final UuidV7Generator ids;
     private final ObjectMapper json;
     private final ModerationAuditWriter auditWriter;
@@ -70,7 +71,8 @@ public class CommunityService {
                              CommunityModeratorRepository moderators, BanRepository bans,
                              AutomodRuleRepository automodRules, FlairRepository flairs,
                              CommunityJoinRequestRepository joinRequests,
-                             CommunityApprovedSubmitterRepository approvedSubmitters, UuidV7Generator ids,
+                             CommunityApprovedSubmitterRepository approvedSubmitters,
+                             PostingApprovalRequestRepository postingRequests, UuidV7Generator ids,
                              ObjectMapper json, ModerationAuditWriter auditWriter, AuthService authService,
                              MediaService mediaService, ApplicationEventPublisher events) {
         this.communities = communities;
@@ -81,6 +83,7 @@ public class CommunityService {
         this.flairs = flairs;
         this.joinRequests = joinRequests;
         this.approvedSubmitters = approvedSubmitters;
+        this.postingRequests = postingRequests;
         this.ids = ids;
         this.json = json;
         this.auditWriter = auditWriter;
@@ -640,6 +643,8 @@ public class CommunityService {
                 .collect(Collectors.toMap(CommunityModerator::getCommunityId, CommunityModerator::getPermissions));
         Set<UUID> approvedIn = approvedSubmitters.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
                 .map(CommunityApprovedSubmitter::getCommunityId).collect(Collectors.toSet());
+        Set<UUID> postingRequestPendingIn = postingRequests.findByUserIdAndCommunityIdInAndStatus(viewerId, communityIds, PostingApprovalRequest.PENDING).stream()
+                .map(PostingApprovalRequest::getCommunityId).collect(Collectors.toSet());
         Map<UUID, String> joinStatusByCommunity = joinRequests.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
                 .collect(Collectors.toMap(CommunityJoinRequest::getCommunityId, CommunityJoinRequest::getStatus));
         for (Community c : communityList) {
@@ -647,6 +652,7 @@ public class CommunityService {
             c.setIsModerator(moderatorOf.contains(c.getId()));
             c.setJoinRequestStatus(joinStatusByCommunity.get(c.getId()));
             c.setMyPermissions(permissionsByCommunity.get(c.getId()));
+            c.setPostingRequestPending(postingRequestPendingIn.contains(c.getId()));
             // The same rule requirePostAccess enforces on every write, computed so the UI can say so up front. Display only:
             // the server re-checks on each post, so this flag grants nothing.
             boolean mod = moderatorOf.contains(c.getId());
@@ -717,10 +723,26 @@ public class CommunityService {
     public void setType(UUID actorId, UUID communityId, String type) {
         requirePermission(actorId, communityId, CommunityModerator.OWNER_PERMISSIONS);
         Community c = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        boolean changed = !type.equals(c.getType());
         c.setType(type);
         communities.save(c);
+        if (changed) {
+            closePendingPostingRequests(actorId, communityId);
+        }
         // Deliberately does NOT touch existing Membership rows — a community flipping to private keeps
         // its current subscribers viewing it with no new request needed; only new members need approval.
+    }
+
+    // Posting-approval requests only mean something while a community is restricted. Whenever its type changes (away from restricted, or a
+    // stray one left by a request that raced the change), every pending request is closed as cancelled, never deleted, so the history
+    // stays auditable and nothing comes back if the community is restricted again later: people simply ask afresh. Each closed request
+    // is logged against its requester, with the moderator who changed the type as the actor. Approved submitters, join requests and
+    // memberships are separate state and are left exactly as they are.
+    private void closePendingPostingRequests(UUID actorId, UUID communityId) {
+        for (PostingApprovalRequest r : postingRequests.findByCommunityIdAndStatusOrderByCreatedAtAsc(communityId, PostingApprovalRequest.PENDING)) {
+            r.resolve(PostingApprovalRequest.CANCELLED, actorId);
+            auditWriter.logAction(communityId, actorId, "posting_approval_cancelled", "user", r.getUserId(), "community type changed");
+        }
     }
 
     // No-ops for public/restricted. For private, passes for a member or any kind of moderator; a null
