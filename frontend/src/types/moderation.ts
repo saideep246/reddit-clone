@@ -111,3 +111,26 @@ export interface AutomodRule {
   enabled: boolean;
   createdAt: string;
 }
+
+// A moderator invitation addressed to the signed-in user (GET /api/moderator-invites). The server holds the real permissions;
+// these fields are for display only and are never sent back when responding.
+export interface MyModeratorInvite {
+  id: string;
+  communityName: string;
+  inviterUsername: string | null;
+  permissions: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+// A moderator invitation as the community's moderators see it (GET /r/{name}/mod/moderator-invites).
+export interface ModeratorInviteEntry {
+  id: string;
+  inviteeId: string;
+  inviteeUsername: string | null;
+  inviterUsername: string | null;
+  permissions: number;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+}

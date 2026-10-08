@@ -1,5 +1,6 @@
 package com.redditclone.auth;
 
+import com.redditclone.auth.dto.UserSearchHit;
 import com.redditclone.common.OutboxWriter;
 import com.redditclone.common.UuidV7Generator;
 import com.redditclone.common.exception.ConflictException;
@@ -181,6 +182,17 @@ public class AuthService {
     // Read by community.CommunityService's permission checks so a deleted/banned account's still-valid
     // access token can't keep exercising moderator/site-admin authority for the remainder of its TTL —
     // deleteAccount() anonymizes the row but never touches community_moderators/is_site_admin directly.
+    // Read by usersearch.UserSearchService so the picker search never reaches into auth's repository. Over-fetches by the number of
+    // excluded ids (a caller's blocked users) and filters here, so the final page still holds `limit` rows when it can.
+    public List<UserSearchHit> searchActiveUsers(UUID callerId, String query, Set<UUID> excludedIds, int limit) {
+        String escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        return users.searchForPicker(query, escaped, callerId, limit + excludedIds.size()).stream()
+                .filter(h -> !excludedIds.contains(h.getId()))
+                .limit(limit)
+                .map(h -> new UserSearchHit(h.getId(), h.getUsername()))
+                .toList();
+    }
+
     public boolean isActive(UUID userId) {
         return users.findById(userId).map(u -> "active".equals(u.getStatus())).orElse(false);
     }

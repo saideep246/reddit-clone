@@ -41,6 +41,27 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """, nativeQuery = true)
     List<User> searchByUsername(@Param("query") String query);
 
+    // Picker search (usersearch.UserSearchService): the same filter and trigram index as searchByUsername above (active users,
+    // ILIKE substring), but ordered exact -> prefix -> substring (then similarity, karma, name) and returning only id +
+    // username. :escaped is :raw with LIKE wildcards escaped by the caller, so "_" and "%" in a query match literally.
+    @Query(value = """
+            SELECT id AS id, username::text AS username FROM users
+            WHERE status = 'active' AND id <> :callerId AND username ILIKE '%' || :escaped || '%'
+            ORDER BY CASE WHEN lower(username::text) = lower(:raw) THEN 0
+                          WHEN username ILIKE :escaped || '%' THEN 1
+                          ELSE 2 END,
+                     similarity(username, :raw) DESC, karma_post DESC, username
+            LIMIT :lim
+            """, nativeQuery = true)
+    List<UserHit> searchForPicker(@Param("raw") String raw, @Param("escaped") String escaped,
+                                  @Param("callerId") UUID callerId, @Param("lim") int limit);
+
+    interface UserHit {
+        UUID getId();
+
+        String getUsername();
+    }
+
     // clearAutomatically: same reasoning as CommentRepository.incrementChildCount — without it, a User
     // entity already loaded in this transaction would keep its stale pre-update karma in the persistence
     // context, and a later save of that entity would silently clobber this bulk update.

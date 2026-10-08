@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useModerators } from '../hooks/useModerators';
+import type { UserSearchHit } from '../lib/userSearchApi';
+import { UserPicker } from './UserPicker';
 import { timeAgo } from '../lib/time';
 import {
   ALL_PERMISSION_BITS,
@@ -8,6 +10,7 @@ import {
   PERMISSION_OPTIONS,
   PERMISSION_PRESETS,
   type ModeratorEntry,
+  type ModeratorInviteEntry,
 } from '../types/moderation';
 import styles from './ModeratorsTab.module.css';
 
@@ -65,12 +68,34 @@ function PermissionChips({ permissions, owner }: { permissions: number; owner: b
   );
 }
 
+// "Pending invitations" holds only invitations someone can still act on. The server already leaves lapsed ones out of the list;
+// this keeps a page that has been open past an expiry consistent with that, instead of showing a stale row.
+function isLive(i: ModeratorInviteEntry): boolean {
+  return i.status === 'pending' && new Date(i.expiresAt).getTime() > Date.now();
+}
+
+function expiryLabel(i: ModeratorInviteEntry): string {
+  const days = Math.ceil((new Date(i.expiresAt).getTime() - Date.now()) / 86_400_000);
+  return days <= 1 ? 'expires within a day' : `expires in ${days} days`;
+}
+
 export function ModeratorsTab({ communityName, myPermissions }: ModeratorsTabProps) {
-  const { moderators, loading, error, addByUsername, updatePermissions, remove } = useModerators(communityName);
+  const { moderators, invites: fetchedInvites, loading, error, invite, cancelInvite, updatePermissions, remove } = useModerators(communityName);
   const mine = myPermissions ?? 0;
+
+  // Re-evaluate liveness at the moment the soonest invitation lapses, so it leaves the list without a reload.
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const next = fetchedInvites.filter(isLive).map((i) => new Date(i.expiresAt).getTime()).sort((a, b) => a - b)[0];
+    if (next === undefined) return;
+    const timer = setTimeout(() => setNow((n) => n + 1), Math.max(next - Date.now(), 0) + 250);
+    return () => clearTimeout(timer);
+  }, [fetchedInvites]);
+  const invites = fetchedInvites.filter(isLive);
   const canManage = hasPermission(mine, PERM_MANAGE_MODERATORS);
 
-  const [username, setUsername] = useState('');
+  const [selected, setSelected] = useState<UserSearchHit | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [newPerms, setNewPerms] = useState(PERMISSION_PRESETS[0].bits & mine);
   const [editing, setEditing] = useState<string | null>(null);
   const [editPerms, setEditPerms] = useState(0);
@@ -91,16 +116,35 @@ export function ModeratorsTab({ communityName, myPermissions }: ModeratorsTabPro
     }
   };
 
-  const handleAdd = (e: FormEvent) => {
+  // People the picker should show greyed out: already moderators, or already holding a pending invitation.
+  const unavailable = useMemo(() => {
+    const map: Record<string, string> = {};
+    invites.forEach((i) => {
+      if (i.inviteeUsername) map[i.inviteeUsername.toLowerCase()] = 'Invitation pending';
+    });
+    moderators.forEach((m) => {
+      if (m.username) map[m.username.toLowerCase()] = m.owner ? 'Owner' : 'Already a moderator';
+    });
+    return map;
+  }, [invites, moderators]);
+
+  const handleInvite = (e: FormEvent) => {
     e.preventDefault();
-    const name = username.trim().replace(/^u\//i, '');
-    if (!name) return;
+    if (!selected) return;
     if (newPerms === 0) {
       setFormError('Choose at least one permission.');
       return;
     }
-    run(() => addByUsername(name, newPerms), () => setUsername(''));
+    const name = selected.username;
+    run(() => invite(name, newPerms), () => {
+      setSentTo(name);
+      setSelected(null);
+    });
   };
+
+  // Same rule as sending: you can only withdraw an invitation whose permissions fit inside your own. Everything listed here is
+  // live and pending; the server is the final judge either way.
+  const canCancel = (i: ModeratorInviteEntry) => canManage && (i.permissions & ~mine) === 0;
 
   // A moderator can only change someone whose permissions are a subset of their own (the backend enforces the same rule).
   const canChange = (m: ModeratorEntry) => canManage && !m.owner && (m.permissions & ~mine) === 0;
@@ -108,27 +152,89 @@ export function ModeratorsTab({ communityName, myPermissions }: ModeratorsTabPro
   return (
     <div>
       {canManage ? (
-        <form className={styles.addCard} onSubmit={handleAdd}>
-          <h3 className={styles.heading}>Add a moderator</h3>
-          <input
-            className={styles.input}
-            placeholder="Username (they do not need to be a member)"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            aria-label="Username to make a moderator"
-          />
-          <PermissionPicker value={newPerms} onChange={setNewPerms} mine={mine} />
-          <button type="submit" className={styles.primary} disabled={busy || !username.trim()}>
-            {busy ? 'Adding…' : 'Add moderator'}
-          </button>
+        <form className={styles.addCard} onSubmit={handleInvite}>
+          <h3 className={styles.heading}>Invite a moderator</h3>
+          {selected ? (
+            <div className={styles.selected}>
+              <span>
+                Inviting <strong>u/{selected.username}</strong>
+              </span>
+              <button type="button" className={styles.secondary} onClick={() => setSelected(null)}>
+                Change
+              </button>
+            </div>
+          ) : (
+            <UserPicker
+              label="Find a user to invite"
+              purpose="moderator"
+              unavailable={unavailable}
+              onSelect={(hit) => {
+                setSelected(hit);
+                setSentTo(null);
+                setFormError(null);
+              }}
+            />
+          )}
+          {selected && (
+            <>
+              <PermissionPicker value={newPerms} onChange={setNewPerms} mine={mine} />
+              <p className={styles.note}>They get a notification and become a moderator, and join the community, once they accept.</p>
+              <button type="submit" className={styles.primary} disabled={busy}>
+                {busy ? 'Sending…' : 'Send invitation'}
+              </button>
+            </>
+          )}
         </form>
       ) : (
         <p className={styles.note}>You can see who moderates this community. Only moderators with the "Manage moderators" permission can change the list.</p>
+      )}
+      {sentTo && (
+        <p className={styles.success} role="status">
+          Moderator invitation sent to u/{sentTo}.
+        </p>
       )}
       {formError && (
         <p className={styles.error} role="alert">
           {formError}
         </p>
+      )}
+
+      {!loading && !error && invites.length > 0 && (
+        <section className={styles.invites} aria-labelledby="pending-invites-heading">
+          <h3 id="pending-invites-heading" className={styles.heading}>
+            Pending invitations
+          </h3>
+          {invites.map((i) => (
+            <div key={i.id} className={styles.row}>
+              <div className={styles.rowMain}>
+                <div>
+                  <strong>u/{i.inviteeUsername ?? '[deleted]'}</strong>
+                  <span className={styles.statusPill}>Pending</span>
+                  <span className={styles.meta}>
+                    {' '}
+                    · invited by u/{i.inviterUsername ?? '[deleted]'} {timeAgo(i.createdAt)} · {expiryLabel(i)}
+                  </span>
+                </div>
+                <div className={styles.chips}>
+                  <PermissionChips permissions={i.permissions} owner={false} />
+                </div>
+              </div>
+              {canCancel(i) && (
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.secondary}
+                    disabled={busy}
+                    aria-label={`Cancel the invitation to u/${i.inviteeUsername ?? 'this user'}`}
+                    onClick={() => run(() => cancelInvite(i.id), () => setSentTo(null))}
+                  >
+                    Cancel invitation
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
       )}
 
       {loading ? (

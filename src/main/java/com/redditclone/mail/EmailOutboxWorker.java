@@ -85,7 +85,7 @@ public class EmailOutboxWorker {
             case "password_reset" -> new EmailMessage(to, toName, EmailTemplates.passwordResetSubject(),
                     EmailTemplates.passwordResetHtml(toName, payload.path("link").asString()));
             case "notification" -> new EmailMessage(to, toName, EmailTemplates.notificationSubject(payload.path("type").asString()),
-                    EmailTemplates.notificationHtml(toName, payload.path("link").asString()));
+                    EmailTemplates.notificationHtml(toName, payload.path("link").asString(), payload.path("type").asString()));
             default -> null;
         };
 

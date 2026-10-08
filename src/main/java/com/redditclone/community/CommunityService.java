@@ -133,7 +133,7 @@ public class CommunityService {
 
     // Shared by join() (public/restricted self-serve) and approveJoinRequest() (private's approval path,
     // which deliberately bypasses join()'s own private-community rejection since approval IS the path in).
-    private void addMemberDirectly(UUID userId, UUID communityId) {
+    void addMemberDirectly(UUID userId, UUID communityId) {
         if (memberships.existsByUserIdAndCommunityId(userId, communityId)) {
             return; // idempotent
         }

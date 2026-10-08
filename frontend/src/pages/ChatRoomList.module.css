@@ -12,8 +12,50 @@
 
 .startForm {
   display: flex;
+  align-items: flex-start;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+
+.startPicker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chosen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.chipRemove {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .startInput {
@@ -28,6 +70,7 @@
 }
 
 .startButton {
+  margin-top: 18px; /* lines the button up with the input under the picker's label */
   height: 36px;
   padding: 0 var(--space-4);
   border: none;

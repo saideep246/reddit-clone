@@ -18,7 +18,24 @@ const ACTIONS = [
   'create_flair',
   'update_flair',
   'delete_flair',
+  'invite_moderator',
+  'accept_moderator_invite',
+  'decline_moderator_invite',
+  'cancel_moderator_invite',
 ];
+
+// Friendly names for the actions that have one; every other action just reads its stored name with spaces. The stored names
+// themselves never change (they are what the filter sends to the server).
+const ACTION_LABELS: Record<string, string> = {
+  invite_moderator: 'Invited moderator',
+  accept_moderator_invite: 'Accepted moderator invitation',
+  decline_moderator_invite: 'Declined moderator invitation',
+  cancel_moderator_invite: 'Cancelled moderator invitation',
+};
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action.replace(/_/g, ' ');
+}
 
 const PAGE = 100;
 
@@ -75,7 +92,7 @@ export function ModLogTab({ communityName }: { communityName: string }) {
           <option value="">All actions</option>
           {ACTIONS.map((a) => (
             <option key={a} value={a}>
-              {a.replace(/_/g, ' ')}
+              {actionLabel(a)}
             </option>
           ))}
         </select>
@@ -101,7 +118,7 @@ export function ModLogTab({ communityName }: { communityName: string }) {
       {!loading && entries.length === 0 && !error && <p className={styles.muted}>No matching actions.</p>}
       {entries.map((e) => (
         <div key={e.id} className={styles.row}>
-          <span className={styles.action}>{e.action.replace(/_/g, ' ')}</span>
+          <span className={styles.action}>{actionLabel(e.action)}</span>
           <span className={styles.who}>
             by u/{e.actorUsername ?? '[deleted]'} · {e.targetType}
           </span>

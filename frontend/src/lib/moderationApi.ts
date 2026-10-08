@@ -1,7 +1,7 @@
 import { api } from './apiClient';
 import type { Flair } from '../types/post';
 import type {
-  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ModeratorEntry, ReportEntry } from '../types/moderation';
+  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ModeratorEntry, ModeratorInviteEntry, ReportEntry } from '../types/moderation';
 
 export function fetchModQueue(communityName: string): Promise<ModQueueItem[]> {
   return api.get(`/r/${communityName}/mod/queue`) as Promise<ModQueueItem[]>;
@@ -155,6 +155,19 @@ export function fetchModerators(communityName: string): Promise<ModeratorEntry[]
 // Adding an existing moderator again replaces their permissions, so this doubles as "edit permissions".
 export function saveModerator(communityName: string, userId: string, permissions: number): Promise<unknown> {
   return api.post(`/r/${communityName}/mod/moderators`, { userId, permissions });
+}
+
+export function fetchModeratorInvites(communityName: string): Promise<ModeratorInviteEntry[]> {
+  return api.get(`/r/${communityName}/mod/moderator-invites`) as Promise<ModeratorInviteEntry[]>;
+}
+
+// Permissions go to the server as chosen, but the server checks them against the sender's own and stores them on the invitation.
+export function sendModeratorInvite(communityName: string, username: string, permissions: number): Promise<ModeratorInviteEntry> {
+  return api.post(`/r/${communityName}/mod/moderator-invites`, { username, permissions }) as Promise<ModeratorInviteEntry>;
+}
+
+export function cancelModeratorInvite(communityName: string, inviteId: string): Promise<unknown> {
+  return api.del(`/r/${communityName}/mod/moderator-invites/${inviteId}`);
 }
 
 export function removeModerator(communityName: string, userId: string): Promise<unknown> {
