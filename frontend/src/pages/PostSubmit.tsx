@@ -3,11 +3,13 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext';
 import { DraftsPanel } from '../components/DraftsPanel';
 import { FlairPicker } from '../components/FlairPicker';
+import { PostingRestricted } from '../components/PostingRestricted';
 import { useCommunityBrowse } from '../hooks/useCommunityBrowse';
 import { useCommunitySearch } from '../hooks/useCommunitySearch';
 import { useGalleryUpload } from '../hooks/useGalleryUpload';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { ApiError } from '../lib/apiClient';
+import { fetchCommunityAbout } from '../lib/communityApi';
 import { createDraft, deleteDraft, fetchDrafts, schedulePost, submitPost, updateDraft, type DraftPayload } from '../lib/postApi';
 import type { PostKind } from '../types/post';
 import styles from './PostSubmit.module.css';
@@ -29,6 +31,25 @@ export function PostSubmit() {
   // Shown while the search box is empty, so the picker is never a blank page: the most popular communities.
   const popular = useCommunityBrowse('popular');
   const searching = debouncedPickerQuery.trim() !== '';
+
+  // Restricted communities: a person who may not post gets the explanation instead of a composer that could never submit.
+  // Display only (the server still refuses), so a failed lookup simply shows the composer and lets the server decide.
+  const [posting, setPosting] = useState<'checking' | 'blocked' | 'ok'>('checking');
+  useEffect(() => {
+    if (!communityName) return;
+    let cancelled = false;
+    setPosting('checking'); // switching communities must not briefly show the previous one's verdict
+    fetchCommunityAbout(communityName)
+      .then((c) => {
+        if (!cancelled) setPosting(c.type === 'restricted' && c.canPost === false ? 'blocked' : 'ok');
+      })
+      .catch(() => {
+        if (!cancelled) setPosting('ok');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [communityName]);
 
   const [tab, setTab] = useState<Tab>('text');
   const [title, setTitle] = useState('');
@@ -245,6 +266,26 @@ export function PostSubmit() {
       setDraftMessage(err instanceof ApiError ? err.message : 'Could not save the draft.');
     }
   };
+
+  if (posting === 'checking') {
+    return (
+      <div className={styles.wrapper}>
+        <div className={styles.card}>
+          <p>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (posting === 'blocked') {
+    return (
+      <div className={styles.wrapper}>
+        <div className={styles.card}>
+          <PostingRestricted communityName={communityName} showBackLink />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.wrapper}>

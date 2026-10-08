@@ -100,6 +100,12 @@ public class Community {
     @Transient
     private Integer myPermissions;
 
+    // Whether the viewer may create posts here under the community's type (public: anyone; restricted: moderators and approved
+    // submitters; private: members and moderators). null for an anonymous viewer or where viewer context was not computed. For
+    // display only: CommunityService.requirePostAccess is what actually enforces it.
+    @Transient
+    private Boolean canPost;
+
     public UUID getId() {
         return id;
     }
@@ -241,6 +247,14 @@ public class Community {
 
     public void setIsMember(Boolean isMember) {
         this.isMember = isMember;
+    }
+
+    public Boolean getCanPost() {
+        return canPost;
+    }
+
+    public void setCanPost(Boolean canPost) {
+        this.canPost = canPost;
     }
 
     public Boolean getIsModerator() {

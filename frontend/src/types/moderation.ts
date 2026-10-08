@@ -134,3 +134,11 @@ export interface ModeratorInviteEntry {
   createdAt: string;
   expiresAt: string;
 }
+
+// One row of a restricted community's approved-posters list (GET /r/{name}/mod/approved-submitters).
+export interface ApprovedSubmitterEntry {
+  userId: string;
+  username: string | null;
+  approvedByUsername: string | null;
+  approvedAt: string;
+}

@@ -1,3 +1,4 @@
+import { PostingRestricted } from '../components/PostingRestricted';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -50,10 +51,14 @@ export function CommunityPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
         </form>
-        {user && (
-          <Link to={`/r/${communityName}/submit`} className={styles.createPostButton}>
-            Create Post
-          </Link>
+        {user && community.type === 'restricted' && community.canPost === false ? (
+          <PostingRestricted communityName={communityName} />
+        ) : (
+          user && (
+            <Link to={`/r/${communityName}/submit`} className={styles.createPostButton}>
+              Create Post
+            </Link>
+          )
         )}
         {pinned.length > 0 && (
           <div className={styles.pinnedSection}>

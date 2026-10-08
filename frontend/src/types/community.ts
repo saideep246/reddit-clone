@@ -26,6 +26,9 @@ export interface Community {
   // viewer (0 would be ambiguous with "a moderator granted zero bits"), real bits otherwise. See
   // lib/moderationApi.ts's PERM_* constants for what each bit means.
   myPermissions?: number | null;
+  // Whether the viewer may create posts here under the community's type (null for an anonymous viewer). Display only: the server
+  // checks posting rights again on every post.
+  canPost?: boolean | null;
 }
 
 export interface CommunityRule {
