@@ -194,9 +194,16 @@ public class ModerationService {
         List<ModerationAction> page = actions.findFiltered(communityId, blankToEmpty(action), byActorId,
                 blankToEmpty(targetType), targetId, bound, Pageable.ofSize(LIST_PAGE_SIZE));
         if (!page.isEmpty()) {
-            Map<UUID, String> names = authService.findUsernamesByIds(
-                    page.stream().map(ModerationAction::getActorId).collect(Collectors.toSet()));
-            page.forEach(a -> a.setActorUsername(names.get(a.getActorId())));
+            Set<UUID> userIds = new HashSet<>();
+            page.forEach(a -> userIds.add(a.getActorId()));
+            page.stream().filter(a -> "user".equals(a.getTargetType())).forEach(a -> userIds.add(a.getTargetId()));
+            Map<UUID, String> names = authService.findUsernamesByIds(userIds);
+            page.forEach(a -> {
+                a.setActorUsername(names.get(a.getActorId()));
+                if ("user".equals(a.getTargetType())) {
+                    a.setTargetUsername(names.get(a.getTargetId()));
+                }
+            });
         }
         return page;
     }

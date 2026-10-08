@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { ApprovedPostersTab } from '../components/ApprovedPostersTab';
 import { AutomodTab } from '../components/AutomodTab';
 import { BansTab } from '../components/BansTab';
 import { JoinRequestsTab } from '../components/JoinRequestsTab';
@@ -20,7 +21,7 @@ import {
 import type { Community } from '../types/community';
 import styles from './ModerationDashboard.module.css';
 
-type Tab = 'queue' | 'bans' | 'join-requests' | 'automod' | 'settings' | 'moderators' | 'notes' | 'log';
+type Tab = 'queue' | 'bans' | 'join-requests' | 'approved-posters' | 'automod' | 'settings' | 'moderators' | 'notes' | 'log';
 
 export function ModerationDashboard() {
   const { communityName = '' } = useParams();
@@ -79,6 +80,8 @@ export function ModerationDashboard() {
 
   const canSeeBans = hasPermission(community.myPermissions, PERM_BAN_USERS);
   const canSeeJoinRequests = hasPermission(community.myPermissions, PERM_MANAGE_ACCESS);
+  // Approved posters only mean something where posting is restricted, so the tab is offered only there.
+  const canSeeApprovedPosters = canSeeJoinRequests && community.type === 'restricted';
   const canManageAutomod = hasPermission(community.myPermissions, PERM_MANAGE_AUTOMOD);
   const canManageSettings = hasPermission(community.myPermissions, PERM_MANAGE_SETTINGS);
   const canManageFlairs = hasPermission(community.myPermissions, PERM_MANAGE_FLAIRS);
@@ -91,6 +94,7 @@ export function ModerationDashboard() {
   const activeTab: Tab =
     (tab === 'bans' && !canSeeBans) ||
     (tab === 'join-requests' && !canSeeJoinRequests) ||
+    (tab === 'approved-posters' && !canSeeApprovedPosters) ||
     (tab === 'settings' && !canSeeSettings)
       ? 'queue'
       : tab;
@@ -125,6 +129,16 @@ export function ModerationDashboard() {
             onClick={() => setTab('join-requests')}
           >
             Join Requests
+          </button>
+        )}
+
+        {canSeeApprovedPosters && (
+          <button
+            type="button"
+            className={`${styles.tab} ${activeTab === 'approved-posters' ? styles.tabActive : ''}`}
+            onClick={() => setTab('approved-posters')}
+          >
+            Approved posters
           </button>
         )}
 
@@ -183,6 +197,10 @@ export function ModerationDashboard() {
 
               {activeTab === 'join-requests' && canSeeJoinRequests && (
                 <JoinRequestsTab communityName={communityName} />
+              )}
+
+              {activeTab === 'approved-posters' && canSeeApprovedPosters && (
+                <ApprovedPostersTab communityName={communityName} />
               )}
 
               {activeTab === 'automod' && (

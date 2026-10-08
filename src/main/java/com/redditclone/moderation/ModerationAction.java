@@ -43,6 +43,10 @@ public class ModerationAction {
     @jakarta.persistence.Transient
     private String actorUsername;
 
+    // Resolved for rows whose target is a user (bans, invitations, approved submitters), so the log can say who it was about.
+    @jakarta.persistence.Transient
+    private String targetUsername;
+
     public UUID getId() {
         return id;
     }
@@ -69,6 +73,14 @@ public class ModerationAction {
 
     public String getReason() {
         return reason;
+    }
+
+    public String getTargetUsername() {
+        return targetUsername;
+    }
+
+    public void setTargetUsername(String targetUsername) {
+        this.targetUsername = targetUsername;
     }
 
     public String getActorUsername() {

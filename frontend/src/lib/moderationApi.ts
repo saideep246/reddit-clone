@@ -1,7 +1,7 @@
 import { api } from './apiClient';
 import type { Flair } from '../types/post';
 import type {
-  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ModeratorEntry, ModeratorInviteEntry, ReportEntry } from '../types/moderation';
+  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ApprovedSubmitterEntry, ModeratorEntry, ModeratorInviteEntry, ReportEntry } from '../types/moderation';
 
 export function fetchModQueue(communityName: string): Promise<ModQueueItem[]> {
   return api.get(`/r/${communityName}/mod/queue`) as Promise<ModQueueItem[]>;
@@ -119,6 +119,8 @@ export interface ModLogEntry {
   action: string;
   targetType: string;
   targetId: string;
+  // Set when the target is a user (bans, invitations, approved submitters).
+  targetUsername?: string | null;
   reason: string | null;
   createdAt: string;
 }
@@ -155,6 +157,19 @@ export function fetchModerators(communityName: string): Promise<ModeratorEntry[]
 // Adding an existing moderator again replaces their permissions, so this doubles as "edit permissions".
 export function saveModerator(communityName: string, userId: string, permissions: number): Promise<unknown> {
   return api.post(`/r/${communityName}/mod/moderators`, { userId, permissions });
+}
+
+// Restricted communities: people (besides moderators) who may post. All three need "Manage access".
+export function fetchApprovedSubmitters(communityName: string): Promise<ApprovedSubmitterEntry[]> {
+  return api.get(`/r/${communityName}/mod/approved-submitters`) as Promise<ApprovedSubmitterEntry[]>;
+}
+
+export function approveSubmitter(communityName: string, userId: string): Promise<unknown> {
+  return api.post(`/r/${communityName}/mod/approved-submitters`, { userId });
+}
+
+export function removeApprovedSubmitter(communityName: string, userId: string): Promise<unknown> {
+  return api.del(`/r/${communityName}/mod/approved-submitters/${userId}`);
 }
 
 export function fetchModeratorInvites(communityName: string): Promise<ModeratorInviteEntry[]> {

@@ -11,6 +11,7 @@ import com.redditclone.common.exception.BadRequestException;
 import com.redditclone.common.exception.ConflictException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
+import com.redditclone.community.dto.ApprovedSubmitterView;
 import com.redditclone.community.dto.CommunityRule;
 import com.redditclone.community.dto.ModeratorView;
 import org.springframework.context.ApplicationEventPublisher;
@@ -637,6 +638,8 @@ public class CommunityService {
         Set<UUID> moderatorOf = moderatorRows.stream().map(CommunityModerator::getCommunityId).collect(Collectors.toSet());
         Map<UUID, Integer> permissionsByCommunity = moderatorRows.stream()
                 .collect(Collectors.toMap(CommunityModerator::getCommunityId, CommunityModerator::getPermissions));
+        Set<UUID> approvedIn = approvedSubmitters.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
+                .map(CommunityApprovedSubmitter::getCommunityId).collect(Collectors.toSet());
         Map<UUID, String> joinStatusByCommunity = joinRequests.findByUserIdAndCommunityIdIn(viewerId, communityIds).stream()
                 .collect(Collectors.toMap(CommunityJoinRequest::getCommunityId, CommunityJoinRequest::getStatus));
         for (Community c : communityList) {
@@ -644,6 +647,14 @@ public class CommunityService {
             c.setIsModerator(moderatorOf.contains(c.getId()));
             c.setJoinRequestStatus(joinStatusByCommunity.get(c.getId()));
             c.setMyPermissions(permissionsByCommunity.get(c.getId()));
+            // The same rule requirePostAccess enforces on every write, computed so the UI can say so up front. Display only:
+            // the server re-checks on each post, so this flag grants nothing.
+            boolean mod = moderatorOf.contains(c.getId());
+            c.setCanPost(switch (c.getType()) {
+                case "restricted" -> mod || approvedIn.contains(c.getId());
+                case "private" -> mod || memberOf.contains(c.getId());
+                default -> true;
+            });
         }
     }
 
@@ -819,18 +830,41 @@ public class CommunityService {
         joinRequests.save(r);
     }
 
+    // The Approved posters tab: who may post in a restricted community besides its moderators. Same "Manage access" permission
+    // as approving and removing, since the list is only useful to someone who can act on it. One batched username lookup.
+    public List<ApprovedSubmitterView> listApprovedSubmitters(UUID actorId, UUID communityId) {
+        requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_ACCESS);
+        requireActive(communityId);
+        List<CommunityApprovedSubmitter> rows = approvedSubmitters.findByCommunityIdOrderByApprovedAtDesc(communityId);
+        Set<UUID> ids = new HashSet<>();
+        rows.forEach(r -> { ids.add(r.getUserId()); if (r.getApprovedBy() != null) ids.add(r.getApprovedBy()); });
+        Map<UUID, String> names = authService.findUsernamesByIds(ids);
+        return rows.stream()
+                .map(r -> new ApprovedSubmitterView(r.getUserId(), names.get(r.getUserId()),
+                        r.getApprovedBy() == null ? null : names.get(r.getApprovedBy()), r.getApprovedAt()))
+                .toList();
+    }
+
     @Transactional
     public void addApprovedSubmitter(UUID actorId, UUID communityId, UUID targetUserId) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_ACCESS);
+        // An unknown or inactive account is a clean 404 rather than a foreign-key failure from the insert below.
+        if (!authService.isActive(targetUserId)) {
+            throw new NotFoundException("no such user");
+        }
+        // Logged only when something actually changes, so repeating a request does not pad the audit trail.
         if (!approvedSubmitters.existsByCommunityIdAndUserId(communityId, targetUserId)) {
             approvedSubmitters.save(new CommunityApprovedSubmitter(communityId, targetUserId, actorId));
+            auditWriter.logAction(communityId, actorId, "approved_submitter_added", "user", targetUserId, null);
         }
     }
 
     @Transactional
     public void removeApprovedSubmitter(UUID actorId, UUID communityId, UUID targetUserId) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_ACCESS);
-        approvedSubmitters.deleteByCommunityIdAndUserId(communityId, targetUserId);
+        if (approvedSubmitters.deleteByCommunityIdAndUserId(communityId, targetUserId) > 0) {
+            auditWriter.logAction(communityId, actorId, "approved_submitter_removed", "user", targetUserId, null);
+        }
     }
 
     // ==================== Discovery ====================

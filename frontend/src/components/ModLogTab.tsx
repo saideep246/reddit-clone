@@ -22,6 +22,8 @@ const ACTIONS = [
   'accept_moderator_invite',
   'decline_moderator_invite',
   'cancel_moderator_invite',
+  'approved_submitter_added',
+  'approved_submitter_removed',
 ];
 
 // Friendly names for the actions that have one; every other action just reads its stored name with spaces. The stored names
@@ -31,6 +33,8 @@ const ACTION_LABELS: Record<string, string> = {
   accept_moderator_invite: 'Accepted moderator invitation',
   decline_moderator_invite: 'Declined moderator invitation',
   cancel_moderator_invite: 'Cancelled moderator invitation',
+  approved_submitter_added: 'Approved submitter',
+  approved_submitter_removed: 'Removed approved submitter',
 };
 
 function actionLabel(action: string): string {
@@ -121,6 +125,7 @@ export function ModLogTab({ communityName }: { communityName: string }) {
           <span className={styles.action}>{actionLabel(e.action)}</span>
           <span className={styles.who}>
             by u/{e.actorUsername ?? '[deleted]'} · {e.targetType}
+            {e.targetUsername ? ` u/${e.targetUsername}` : ''}
           </span>
           {e.reason && <span className={styles.reason}>“{e.reason}”</span>}
           <span className={styles.when}>{timeAgo(e.createdAt)}</span>

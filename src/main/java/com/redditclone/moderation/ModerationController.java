@@ -7,6 +7,7 @@ import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
 import com.redditclone.community.dto.ApprovedSubmitterRequest;
+import com.redditclone.community.dto.ApprovedSubmitterView;
 import com.redditclone.community.dto.ModeratorView;
 import com.redditclone.community.dto.SetCommunityTypeRequest;
 import com.redditclone.community.dto.SetFlairRequest;
@@ -317,6 +318,11 @@ public class ModerationController {
     @PostMapping("/r/{name}/mod/join-requests/{targetUserId}/deny")
     public void denyJoinRequest(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID targetUserId) {
         communityService.denyJoinRequest(userId, communityId(name), targetUserId);
+    }
+
+    @GetMapping("/r/{name}/mod/approved-submitters")
+    public List<ApprovedSubmitterView> listApprovedSubmitters(@AuthenticationPrincipal UUID userId, @PathVariable String name) {
+        return communityService.listApprovedSubmitters(userId, communityId(name));
     }
 
     @PostMapping("/r/{name}/mod/approved-submitters")
