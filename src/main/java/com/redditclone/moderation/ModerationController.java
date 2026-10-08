@@ -88,7 +88,7 @@ public class ModerationController {
 
     @GetMapping("/r/{name}/mod/notes")
     public List<ModNoteView> notes(@AuthenticationPrincipal UUID userId, @PathVariable String name,
-                                    @RequestParam("userId") UUID subjectId) {
+                                    @RequestParam(value = "userId", required = false) UUID subjectId) { // absent = recent notes for the whole community
         return moderation.listNotes(userId, communityId(name), subjectId);
     }
 
