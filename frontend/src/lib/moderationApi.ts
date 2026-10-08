@@ -89,15 +89,17 @@ export function removeAutomodRule(communityName: string, ruleId: string): Promis
 // ---- Mod notes (private, moderator-only)
 export interface ModNote {
   id: string;
-  userId: string;
+  userId: string; // the user the note is about
+  subjectUsername: string | null;
   authorId: string;
   authorUsername: string | null;
   note: string;
   createdAt: string;
 }
 
-export function fetchModNotes(communityName: string, userId: string): Promise<ModNote[]> {
-  return api.get(`/r/${communityName}/mod/notes?userId=${userId}`) as Promise<ModNote[]>;
+// With a userId: that user's notes. Without one: the community's most recent notes about everyone (what the Notes tab shows on open).
+export function fetchModNotes(communityName: string, userId?: string): Promise<ModNote[]> {
+  return api.get(`/r/${communityName}/mod/notes${userId ? `?userId=${userId}` : ''}`) as Promise<ModNote[]>;
 }
 
 export function addModNote(communityName: string, userId: string, note: string): Promise<ModNote> {

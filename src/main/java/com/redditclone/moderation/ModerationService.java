@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.jdbc.core.RowMapper;
 
 @Service
 public class ModerationService {
@@ -224,17 +225,33 @@ public class ModerationService {
     // Private moderator-only context about a user within one community. Any moderator may read and add; only
     // the note's author or someone who can manage moderators may delete.
 
+    // Notes of this community, newest first, capped at 100. With a userId: just that user's notes. With userId == null: the
+    // community's recent notes about everyone, which is what the Notes tab shows on open, so notes written earlier (by this
+    // moderator in a previous session, or by any other moderator) are visible without knowing whom to look up. Either way
+    // the scope is always community_id = the URL's community, so another community's notes can never appear.
     public List<ModNoteView> listNotes(UUID actorId, UUID communityId, UUID userId) {
         communityService.requireAnyModPermission(actorId, communityId);
-        record Row(UUID id, UUID authorId, String note, Instant createdAt) {
+        record Row(UUID id, UUID userId, UUID authorId, String note, Instant createdAt) {
         }
-        List<Row> rows = jdbc.query("""
-                SELECT id, author_id, note, created_at FROM mod_notes
-                WHERE community_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 100
-                """, (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getObject("author_id", UUID.class),
-                rs.getString("note"), rs.getTimestamp("created_at").toInstant()), communityId, userId);
-        Map<UUID, String> names = authService.findUsernamesByIds(rows.stream().map(Row::authorId).collect(Collectors.toSet()));
-        return rows.stream().map(r -> new ModNoteView(r.id(), userId, r.authorId(), names.get(r.authorId()), r.note(), r.createdAt())).toList();
+        RowMapper<Row> mapper = (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getObject("user_id", UUID.class),
+                rs.getObject("author_id", UUID.class), rs.getString("note"), rs.getTimestamp("created_at").toInstant());
+        List<Row> rows = userId == null
+                ? jdbc.query("""
+                        SELECT id, user_id, author_id, note, created_at FROM mod_notes
+                        WHERE community_id = ? ORDER BY created_at DESC, id DESC LIMIT 100
+                        """, mapper, communityId)
+                : jdbc.query("""
+                        SELECT id, user_id, author_id, note, created_at FROM mod_notes
+                        WHERE community_id = ? AND user_id = ? ORDER BY created_at DESC, id DESC LIMIT 100
+                        """, mapper, communityId, userId);
+        // One batched username lookup for both the subjects and the authors.
+        Set<UUID> userIds = new HashSet<>();
+        rows.forEach(r -> {
+            userIds.add(r.userId());
+            userIds.add(r.authorId());
+        });
+        Map<UUID, String> names = authService.findUsernamesByIds(userIds);
+        return rows.stream().map(r -> new ModNoteView(r.id(), r.userId(), names.get(r.userId()), r.authorId(), names.get(r.authorId()), r.note(), r.createdAt())).toList();
     }
 
     @Transactional
