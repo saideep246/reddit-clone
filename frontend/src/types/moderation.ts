@@ -17,6 +17,38 @@ export function hasPermission(myPermissions: number | null | undefined, bit: num
   return ((myPermissions ?? 0) & bit) === bit;
 }
 
+// One entry of the community's moderator list (GET /r/{name}/mod/moderators). `owner` is the creator: never editable or removable.
+export interface ModeratorEntry {
+  userId: string;
+  username: string | null;
+  permissions: number;
+  owner: boolean;
+  addedAt: string;
+}
+
+// The individual permission bits a moderator can hold, with plain-language labels, in display order.
+export const PERMISSION_OPTIONS: { bit: number; label: string; description: string }[] = [
+  { bit: PERM_REMOVE_CONTENT, label: 'Remove posts and comments', description: 'Remove or delete other people\'s posts and comments, handle reports' },
+  { bit: PERM_BAN_USERS, label: 'Ban users', description: 'Ban and unban people in this community' },
+  { bit: PERM_MANAGE_POSTS, label: 'Pin and lock posts', description: 'Pin, lock and sticky content' },
+  { bit: PERM_MANAGE_FLAIRS, label: 'Manage flairs', description: 'Create and delete flairs, set flairs on posts and users' },
+  { bit: PERM_MANAGE_RULES, label: 'Edit rules', description: 'Change the community rules' },
+  { bit: PERM_MANAGE_AUTOMOD, label: 'Manage automod', description: 'Add and remove automod rules' },
+  { bit: PERM_MANAGE_ACCESS, label: 'Manage access', description: 'Approve join requests and approved submitters' },
+  { bit: PERM_MUTE_USERS, label: 'Manage mod mail', description: 'Mute people from contacting the moderators' },
+  { bit: PERM_MANAGE_SETTINGS, label: 'Edit settings', description: 'Change description, icon, banner' },
+  { bit: PERM_MANAGE_MODERATORS, label: 'Manage moderators', description: 'Add and remove moderators (up to your own permissions)' },
+];
+
+export const ALL_PERMISSION_BITS = PERMISSION_OPTIONS.reduce((acc, o) => acc | o.bit, 0);
+
+// Quick starting points for the permission picker; the checkboxes can still be adjusted afterwards.
+export const PERMISSION_PRESETS: { label: string; bits: number }[] = [
+  { label: 'Basic (remove + ban)', bits: PERM_REMOVE_CONTENT | PERM_BAN_USERS },
+  { label: 'Content (remove, ban, pin, flairs)', bits: PERM_REMOVE_CONTENT | PERM_BAN_USERS | PERM_MANAGE_POSTS | PERM_MANAGE_FLAIRS },
+  { label: 'Full permissions', bits: ALL_PERMISSION_BITS },
+];
+
 export interface ModQueueItem {
   communityId: string;
   targetType: 'post' | 'comment';

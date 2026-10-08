@@ -1,0 +1,181 @@
+.addCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.heading {
+  margin: 0;
+  font-size: 15px;
+}
+
+.input {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.preset,
+.secondary,
+.danger,
+.primary {
+  height: 30px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.preset,
+.secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.primary {
+  align-self: flex-start;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.danger {
+  border: none;
+  background: var(--color-danger);
+  color: #fff;
+}
+
+.primary:disabled,
+.danger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-1) var(--space-3);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.note {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  margin: 0 0 var(--space-3);
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: 13px;
+  margin: 0 0 var(--space-2);
+}
+
+.state {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 14px;
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.ownerBadge {
+  margin-left: var(--space-2);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.chip,
+.chipMuted {
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-pill);
+  font-size: 11px;
+}
+
+.chipMuted {
+  color: var(--color-text-secondary);
+}
+
+.editBox {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}

@@ -7,6 +7,7 @@ import com.redditclone.community.CommunityModerator;
 import com.redditclone.community.CommunityService;
 import com.redditclone.community.Flair;
 import com.redditclone.community.dto.ApprovedSubmitterRequest;
+import com.redditclone.community.dto.ModeratorView;
 import com.redditclone.community.dto.SetCommunityTypeRequest;
 import com.redditclone.community.dto.SetFlairRequest;
 import com.redditclone.community.dto.SetRulesRequest;
@@ -15,6 +16,7 @@ import com.redditclone.moderation.dto.AddModeratorRequest;
 import com.redditclone.moderation.dto.AutomodRuleRequest;
 import com.redditclone.moderation.dto.BanRequest;
 import com.redditclone.moderation.dto.FlairRequest;
+import com.redditclone.moderation.dto.UpdateFlairRequest;
 import com.redditclone.moderation.dto.ModMailRequest;
 import com.redditclone.moderation.dto.ModNoteRequest;
 import com.redditclone.moderation.dto.ModNoteView;
@@ -171,6 +173,11 @@ public class ModerationController {
         communityService.removeAutomodRule(userId, communityId(name), ruleId);
     }
 
+    @GetMapping("/r/{name}/mod/moderators")
+    public List<ModeratorView> moderators(@AuthenticationPrincipal UUID userId, @PathVariable String name) {
+        return communityService.listModerators(userId, communityId(name));
+    }
+
     @PostMapping("/r/{name}/mod/moderators")
     public void addModerator(@AuthenticationPrincipal UUID userId, @PathVariable String name,
                               @Valid @RequestBody AddModeratorRequest req) {
@@ -197,6 +204,12 @@ public class ModerationController {
     public Flair addFlair(@AuthenticationPrincipal UUID userId, @PathVariable String name,
                            @Valid @RequestBody FlairRequest req) {
         return communityService.addFlair(userId, communityId(name), req.text(), req.color(), req.type());
+    }
+
+    @PatchMapping("/r/{name}/mod/flairs/{flairId}")
+    public Flair updateFlair(@AuthenticationPrincipal UUID userId, @PathVariable String name, @PathVariable UUID flairId,
+                              @Valid @RequestBody UpdateFlairRequest req) {
+        return communityService.updateFlair(userId, communityId(name), flairId, req.text(), req.color());
     }
 
     @DeleteMapping("/r/{name}/mod/flairs/{flairId}")

@@ -11,6 +11,9 @@ public interface CommunityModeratorRepository extends JpaRepository<CommunityMod
 
     Optional<CommunityModerator> findByCommunityIdAndUserId(UUID communityId, UUID userId);
 
+    // A community's whole moderator list (small by nature), oldest first.
+    List<CommunityModerator> findByCommunityIdOrderByAddedAtAsc(UUID communityId);
+
     boolean existsByCommunityIdAndUserId(UUID communityId, UUID userId);
 
     long deleteByCommunityIdAndUserId(UUID communityId, UUID userId);

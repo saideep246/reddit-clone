@@ -15,6 +15,9 @@ const ACTIONS = [
   'sticky_comment',
   'unsticky_comment',
   'update_settings',
+  'create_flair',
+  'update_flair',
+  'delete_flair',
 ];
 
 const PAGE = 100;
@@ -82,6 +85,7 @@ export function ModLogTab({ communityName }: { communityName: string }) {
           <option value="comment">Comments</option>
           <option value="user">Users</option>
           <option value="community">Community</option>
+          <option value="flair">Flairs</option>
         </select>
         <input
           className={styles.input}

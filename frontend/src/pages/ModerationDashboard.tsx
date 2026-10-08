@@ -5,6 +5,7 @@ import { BansTab } from '../components/BansTab';
 import { JoinRequestsTab } from '../components/JoinRequestsTab';
 import { CommunitySettingsTab } from '../components/CommunitySettingsTab';
 import { ModLogTab } from '../components/ModLogTab';
+import { ModeratorsTab } from '../components/ModeratorsTab';
 import { ModNotesTab } from '../components/ModNotesTab';
 import { ModQueueTab } from '../components/ModQueueTab';
 import { fetchCommunityAbout } from '../lib/communityApi';
@@ -13,12 +14,13 @@ import {
   PERM_BAN_USERS,
   PERM_MANAGE_ACCESS,
   PERM_MANAGE_AUTOMOD,
+  PERM_MANAGE_FLAIRS,
   PERM_MANAGE_SETTINGS,
 } from '../types/moderation';
 import type { Community } from '../types/community';
 import styles from './ModerationDashboard.module.css';
 
-type Tab = 'queue' | 'bans' | 'join-requests' | 'automod' | 'settings' | 'notes' | 'log';
+type Tab = 'queue' | 'bans' | 'join-requests' | 'automod' | 'settings' | 'moderators' | 'notes' | 'log';
 
 export function ModerationDashboard() {
   const { communityName = '' } = useParams();
@@ -79,13 +81,17 @@ export function ModerationDashboard() {
   const canSeeJoinRequests = hasPermission(community.myPermissions, PERM_MANAGE_ACCESS);
   const canManageAutomod = hasPermission(community.myPermissions, PERM_MANAGE_AUTOMOD);
   const canManageSettings = hasPermission(community.myPermissions, PERM_MANAGE_SETTINGS);
+  const canManageFlairs = hasPermission(community.myPermissions, PERM_MANAGE_FLAIRS);
+  // The Settings tab holds both the community settings (Manage settings) and the flair list (Manage flairs), so either one opens it;
+  // each section inside still checks its own permission, and the backend enforces both regardless of what the UI shows.
+  const canSeeSettings = canManageSettings || canManageFlairs;
 
   // Tabs a capped moderator lacks the view permission for simply aren't offered — the backend itself
   // 403s the underlying list for the exact same bit, so this isn't just cosmetic.
   const activeTab: Tab =
     (tab === 'bans' && !canSeeBans) ||
     (tab === 'join-requests' && !canSeeJoinRequests) ||
-    (tab === 'settings' && !canManageSettings)
+    (tab === 'settings' && !canSeeSettings)
       ? 'queue'
       : tab;
 
@@ -129,7 +135,7 @@ export function ModerationDashboard() {
         >
           Automod
         </button>
-                {canManageSettings && (
+                {canSeeSettings && (
                   <button
                     type="button"
                     className={`${styles.tab} ${activeTab === 'settings' ? styles.tabActive : ''}`}
@@ -138,6 +144,14 @@ export function ModerationDashboard() {
                     Settings
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  className={`${styles.tab} ${activeTab === 'moderators' ? styles.tabActive : ''}`}
+                  onClick={() => setTab('moderators')}
+                >
+                  Moderators
+                </button>
 
                 <button
                   type="button"
@@ -178,6 +192,10 @@ export function ModerationDashboard() {
                 />
               )}
 
+              {activeTab === 'moderators' && (
+                <ModeratorsTab communityName={communityName} myPermissions={community.myPermissions} />
+              )}
+
               {activeTab === 'notes' && <ModNotesTab communityName={communityName} />}
 
               {activeTab === 'log' && <ModLogTab communityName={communityName} />}
@@ -185,6 +203,7 @@ export function ModerationDashboard() {
         <CommunitySettingsTab
           community={community}
           canManage={canManageSettings}
+          canManageFlairs={canManageFlairs}
           onSaved={() => setReloadKey((k) => k + 1)}
         />
       )}

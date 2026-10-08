@@ -194,6 +194,11 @@ export function PostDetail() {
                 NSFW
               </span>
             )}
+            {post.flair && (
+              <span className={styles.flairChip} style={{ backgroundColor: post.flair.color, color: '#fff' }}>
+                {post.flair.text}
+              </span>
+            )}
             {post.spoiler && (
               <span className={`${styles.badge} ${styles.badgeSpoiler}`}>
                 Spoiler

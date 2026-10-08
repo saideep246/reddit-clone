@@ -12,6 +12,7 @@ import com.redditclone.common.exception.ConflictException;
 import com.redditclone.common.exception.ForbiddenException;
 import com.redditclone.common.exception.NotFoundException;
 import com.redditclone.community.dto.CommunityRule;
+import com.redditclone.community.dto.ModeratorView;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -237,6 +238,22 @@ public class CommunityService {
         }
     }
 
+    // The Moderators tab: every moderator of the community with their permission bits, the owner first. Visible to any
+    // moderator of THIS community (the same rule as the mod log and queue), so a moderator can see who else moderates even
+    // without the permission to change it. One batched username lookup, no per-row queries.
+    public List<ModeratorView> listModerators(UUID actorId, UUID communityId) {
+        requireAnyModPermission(actorId, communityId);
+        Community community = communities.findById(communityId).orElseThrow(() -> new NotFoundException("no such community"));
+        List<CommunityModerator> rows = moderators.findByCommunityIdOrderByAddedAtAsc(communityId);
+        Map<UUID, String> usernames = authService.findUsernamesByIds(
+                rows.stream().map(CommunityModerator::getUserId).collect(Collectors.toSet()));
+        return rows.stream()
+                .map(m -> new ModeratorView(m.getUserId(), usernames.get(m.getUserId()), m.getPermissions(),
+                        m.getUserId().equals(community.getCreatorId()), m.getAddedAt()))
+                .sorted((a, b) -> Boolean.compare(b.owner(), a.owner())) // owner first; the rest keep their added-at order
+                .toList();
+    }
+
     @Transactional
     public void addModerator(UUID actorId, UUID communityId, UUID targetUserId, int permissions) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_MODERATORS);
@@ -383,22 +400,72 @@ public class CommunityService {
 
     // ==================== Flair ====================
 
+    private static final int MAX_FLAIR_TEXT = 64; // flairs.text is VARCHAR(64)
+
+    // Oldest first (created_at, then id), so the list a moderator sees and the picker a poster sees never reshuffle.
     public List<Flair> listFlairs(UUID communityId, String type) {
-        return type == null ? flairs.findByCommunityId(communityId) : flairs.findByCommunityIdAndType(communityId, type);
+        return type == null ? flairs.findByCommunityIdOrderByCreatedAtAscIdAsc(communityId)
+                : flairs.findByCommunityIdAndTypeOrderByCreatedAtAscIdAsc(communityId, type);
     }
 
+    // Text is trimmed before it is validated, compared and stored, so "  News " and "News" are the same flair.
+    private static String normalizeFlairText(String text) {
+        String t = text == null ? "" : text.trim();
+        if (t.isEmpty()) {
+            throw new BadRequestException("flair text is required");
+        }
+        if (t.length() > MAX_FLAIR_TEXT) {
+            throw new BadRequestException("flair text must be at most " + MAX_FLAIR_TEXT + " characters");
+        }
+        return t;
+    }
+
+    // Duplicate flairs (same community, same type, same text ignoring case) are rejected with 409. This is an application-level
+    // check only: the flairs table has no unique constraint (and none was added for this feature), so it is NOT a concurrency
+    // guarantee. Two simultaneous requests could both pass the check and create two identical flairs. Harmless, and a moderator
+    // can delete the extra one.
     @Transactional
     public Flair addFlair(UUID actorId, UUID communityId, String text, String color, String type) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_FLAIRS);
+        String clean = normalizeFlairText(text);
+        if (flairs.existsByCommunityIdAndTypeAndTextIgnoreCase(communityId, type, clean)) {
+            throw new ConflictException("a " + type + " flair with that name already exists");
+        }
         Flair f = new Flair();
         f.setId(ids.nextId());
         f.setCommunityId(communityId);
-        f.setText(text);
+        f.setText(clean);
         f.setColor(color);
         f.setType(type);
-        return flairs.save(f);
+        Flair saved = flairs.save(f);
+        auditWriter.logAction(communityId, actorId, "create_flair", "flair", saved.getId(), clean + " (" + type + ")");
+        return saved;
     }
 
+    // Edits the text and colour of an existing flair; its type never changes (a post flair cannot turn into a user flair, which
+    // would silently orphan every assignment). A flair of another community is a 404, never an edit. Same duplicate rule as create,
+    // excluding the flair itself so saving an unchanged name (e.g. only the colour changed) is fine.
+    @Transactional
+    public Flair updateFlair(UUID actorId, UUID communityId, UUID flairId, String text, String color) {
+        requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_FLAIRS);
+        Flair f = flairs.findById(flairId).orElseThrow(() -> new NotFoundException("no such flair"));
+        if (!f.getCommunityId().equals(communityId)) {
+            throw new NotFoundException("no such flair");
+        }
+        String clean = normalizeFlairText(text);
+        if (flairs.existsByCommunityIdAndTypeAndTextIgnoreCaseAndIdNot(communityId, f.getType(), clean, flairId)) {
+            throw new ConflictException("a " + f.getType() + " flair with that name already exists");
+        }
+        String before = f.getText() + " " + f.getColor();
+        f.setText(clean);
+        f.setColor(color);
+        Flair saved = flairs.save(f);
+        auditWriter.logAction(communityId, actorId, "update_flair", "flair", flairId, before + " -> " + clean + " " + color);
+        return saved;
+    }
+
+    // Deleting only removes the flair definition. posts.flair_id and memberships.flair_id are ON DELETE SET NULL (V15), so the
+    // posts and memberships that used it are kept and simply lose the flair; nothing here touches them.
     @Transactional
     public void removeFlair(UUID actorId, UUID communityId, UUID flairId) {
         requirePermission(actorId, communityId, CommunityModerator.PERM_MANAGE_FLAIRS);
@@ -406,7 +473,9 @@ public class CommunityService {
         if (!f.getCommunityId().equals(communityId)) {
             throw new NotFoundException("no such flair");
         }
+        String described = f.getText() + " (" + f.getType() + ")"; // the row is gone after the delete, so record what it was
         flairs.deleteById(flairId);
+        auditWriter.logAction(communityId, actorId, "delete_flair", "flair", flairId, described);
     }
 
     // Single validation chokepoint every flair-assignment path calls through — mirrors

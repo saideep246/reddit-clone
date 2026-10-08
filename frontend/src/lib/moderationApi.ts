@@ -1,5 +1,7 @@
 import { api } from './apiClient';
-import type { AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ReportEntry } from '../types/moderation';
+import type { Flair } from '../types/post';
+import type {
+  AutomodAction, AutomodRule, AutomodRuleConfig, AutomodRuleType, BanEntry, JoinRequestEntry, ModQueueItem, ModeratorEntry, ReportEntry } from '../types/moderation';
 
 export function fetchModQueue(communityName: string): Promise<ModQueueItem[]> {
   return api.get(`/r/${communityName}/mod/queue`) as Promise<ModQueueItem[]>;
@@ -142,4 +144,35 @@ export function stickyComment(communityName: string, commentId: string, sticky: 
 
 export function distinguishComment(communityName: string, commentId: string, on: boolean): Promise<unknown> {
   return on ? api.post(`/r/${communityName}/mod/comments/${commentId}/distinguish`) : api.del(`/r/${communityName}/mod/comments/${commentId}/distinguish`);
+}
+
+export function fetchModerators(communityName: string): Promise<ModeratorEntry[]> {
+  return api.get(`/r/${communityName}/mod/moderators`) as Promise<ModeratorEntry[]>;
+}
+
+// Adding an existing moderator again replaces their permissions, so this doubles as "edit permissions".
+export function saveModerator(communityName: string, userId: string, permissions: number): Promise<unknown> {
+  return api.post(`/r/${communityName}/mod/moderators`, { userId, permissions });
+}
+
+export function removeModerator(communityName: string, userId: string): Promise<unknown> {
+  return api.del(`/r/${communityName}/mod/moderators/${userId}`);
+}
+
+// Flair definitions. Listing is public (the same endpoint the submit page's picker uses); the mutations need "Manage flairs".
+export function fetchFlairs(communityName: string): Promise<Flair[]> {
+  return api.get(`/r/${communityName}/flairs`) as Promise<Flair[]>;
+}
+
+export function createFlair(communityName: string, text: string, color: string, type: 'post' | 'user'): Promise<Flair> {
+  return api.post(`/r/${communityName}/mod/flairs`, { text, color, type }) as Promise<Flair>;
+}
+
+// A flair's type never changes; only its text and colour can be edited.
+export function updateFlair(communityName: string, flairId: string, text: string, color: string): Promise<Flair> {
+  return api.patch(`/r/${communityName}/mod/flairs/${flairId}`, { text, color }) as Promise<Flair>;
+}
+
+export function deleteFlair(communityName: string, flairId: string): Promise<unknown> {
+  return api.del(`/r/${communityName}/mod/flairs/${flairId}`);
 }

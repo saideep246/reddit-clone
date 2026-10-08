@@ -5,11 +5,13 @@ import { ApiError } from '../lib/apiClient';
 import { updateCommunitySettings } from '../lib/communityApi';
 import type { Community } from '../types/community';
 import { DeleteCommunityDialog } from './DeleteCommunityDialog';
+import { FlairsSection } from './FlairsSection';
 import styles from './CommunitySettingsTab.module.css';
 
 interface CommunitySettingsTabProps {
   community: Community;
-  canManage: boolean;
+  canManage: boolean; // "Manage settings": the description/icon/banner form
+  canManageFlairs: boolean; // "Manage flairs": create/edit/delete in the Flairs section
   onSaved: () => void;
 }
 
@@ -60,7 +62,7 @@ function ImagePicker({
   );
 }
 
-export function CommunitySettingsTab({ community, canManage, onSaved }: CommunitySettingsTabProps) {
+export function CommunitySettingsTab({ community, canManage, canManageFlairs, onSaved }: CommunitySettingsTabProps) {
   const [description, setDescription] = useState(community.description ?? '');
   const icon = useMediaUpload();
   const banner = useMediaUpload();
@@ -95,6 +97,7 @@ export function CommunitySettingsTab({ community, canManage, onSaved }: Communit
     return (
       <>
         <p className={styles.note}>You don't have permission to change this community's settings.</p>
+        <FlairsSection communityName={community.name} canManageFlairs={canManageFlairs} />
         {isCreator && dangerZone}
       </>
     );
@@ -165,6 +168,7 @@ export function CommunitySettingsTab({ community, canManage, onSaved }: Communit
       </button>
       {message && <p className={message.kind === 'ok' ? styles.ok : styles.error}>{message.text}</p>}
     </form>
+    <FlairsSection communityName={community.name} canManageFlairs={canManageFlairs} />
     {isCreator && dangerZone}
     </>
   );
