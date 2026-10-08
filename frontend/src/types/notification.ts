@@ -1,4 +1,4 @@
-export type NotificationType = 'post_reply' | 'reply' | 'mention' | 'chat_message' | 'new_follower' | 'mod_invite';
+export type NotificationType = 'post_reply' | 'reply' | 'mention' | 'chat_message' | 'new_follower' | 'mod_invite' | 'posting_request' | 'posting_decision';
 
 // Flat/optional rather than a strict per-type union: the only consumer (NotificationsInbox) just reads
 // whichever fields a given type happens to carry, so a cast-free optional-fields shape is simpler than a
@@ -12,6 +12,7 @@ export interface NotificationSource {
   roomId?: string;
   senderId?: string;
   inviteId?: string;
+  decision?: 'approved' | 'denied';
 }
 
 // Notification.source is stored/returned as a JSON *string* (a plain String + jsonb column on the

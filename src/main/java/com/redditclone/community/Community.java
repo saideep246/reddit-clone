@@ -106,6 +106,11 @@ public class Community {
     @Transient
     private Boolean canPost;
 
+    // True when the viewer has a posting-approval request waiting for a moderator (restricted communities). null where viewer
+    // context was not computed.
+    @Transient
+    private Boolean postingRequestPending;
+
     public UUID getId() {
         return id;
     }
@@ -247,6 +252,14 @@ public class Community {
 
     public void setIsMember(Boolean isMember) {
         this.isMember = isMember;
+    }
+
+    public Boolean getPostingRequestPending() {
+        return postingRequestPending;
+    }
+
+    public void setPostingRequestPending(Boolean postingRequestPending) {
+        this.postingRequestPending = postingRequestPending;
     }
 
     public Boolean getCanPost() {

@@ -29,6 +29,8 @@ export interface Community {
   // Whether the viewer may create posts here under the community's type (null for an anonymous viewer). Display only: the server
   // checks posting rights again on every post.
   canPost?: boolean | null;
+  // True while the viewer has a posting-approval request waiting for a moderator (restricted communities).
+  postingRequestPending?: boolean | null;
 }
 
 export interface CommunityRule {

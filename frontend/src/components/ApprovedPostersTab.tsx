@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApprovedSubmitters } from '../hooks/useApprovedSubmitters';
+import { usePostingRequests } from '../hooks/usePostingRequests';
 import { timeAgo } from '../lib/time';
 import type { UserSearchHit } from '../lib/userSearchApi';
 import { UserPicker } from './UserPicker';
@@ -13,7 +14,8 @@ interface ApprovedPostersTabProps {
 // moderator with "Manage access" adds and removes them. Finding a person here only picks them; the server still checks the
 // moderator's permission when the approval is sent.
 export function ApprovedPostersTab({ communityName }: ApprovedPostersTabProps) {
-  const { submitters, loading, error, approve, remove } = useApprovedSubmitters(communityName);
+  const { submitters, loading, error, reload, approve, remove } = useApprovedSubmitters(communityName);
+  const posting = usePostingRequests(communityName, reload);
   const [selected, setSelected] = useState<UserSearchHit | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,50 @@ export function ApprovedPostersTab({ communityName }: ApprovedPostersTabProps) {
         r/{communityName} is restricted: everyone can read it, but only moderators and the people below can post. Approve someone to let
         them post.
       </p>
+
+      <section className={styles.requests} aria-labelledby="posting-requests-heading">
+        <h3 id="posting-requests-heading" className={styles.heading}>
+          Posting approval requests
+        </h3>
+        {posting.loading ? (
+          <div className={styles.state}>Loading…</div>
+        ) : posting.error ? (
+          <div className={styles.state}>{posting.error}</div>
+        ) : posting.requests.length === 0 ? (
+          <div className={styles.state}>No pending requests.</div>
+        ) : (
+          posting.requests.map((r) => (
+            <div key={r.userId} className={styles.row}>
+              <div>
+                <strong>u/{r.username ?? '[deleted]'}</strong>
+                <div className={styles.meta}>
+                  <span className={styles.statusPill}>Pending</span> asked {timeAgo(r.requestedAt)}
+                </div>
+              </div>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={busy}
+                  aria-label={`Approve u/${r.username ?? 'this user'} to post`}
+                  onClick={() => run(() => posting.approve(r.userId), `u/${r.username ?? 'The user'} can now post in r/${communityName}.`)}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={busy}
+                  aria-label={`Deny u/${r.username ?? 'this user'}'s request`}
+                  onClick={() => run(() => posting.deny(r.userId), `Request from u/${r.username ?? 'the user'} denied.`)}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
 
       <div className={styles.addCard}>
         <h3 className={styles.heading}>Approve a poster</h3>

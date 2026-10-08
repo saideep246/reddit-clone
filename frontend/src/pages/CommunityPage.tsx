@@ -19,7 +19,7 @@ export function CommunityPage() {
   const period = (searchParams.get('t') as TopPeriod) || 'all';
 
   const { user } = useAuth();
-  const { community, rules, pinned, loading, error, actionError, join, leave, requestJoin, applyPinnedVote } = useCommunity(communityName);
+  const { community, rules, pinned, loading, error, actionError, join, leave, requestJoin, refreshCommunity, applyPinnedVote } = useCommunity(communityName);
   const feed = useFeed(communityName, sort, period);
   const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
@@ -52,7 +52,7 @@ export function CommunityPage() {
           />
         </form>
         {user && community.type === 'restricted' && community.canPost === false ? (
-          <PostingRestricted communityName={communityName} />
+          <PostingRestricted communityName={communityName} pending={community.postingRequestPending === true} onChanged={refreshCommunity} />
         ) : (
           user && (
             <Link to={`/r/${communityName}/submit`} className={styles.createPostButton}>

@@ -135,6 +135,14 @@ export interface ModeratorInviteEntry {
   expiresAt: string;
 }
 
+// A pending request for posting access in a restricted community (GET /r/{name}/mod/posting-requests).
+export interface PostingRequestEntry {
+  userId: string;
+  username: string | null;
+  status: 'pending';
+  requestedAt: string;
+}
+
 // One row of a restricted community's approved-posters list (GET /r/{name}/mod/approved-submitters).
 export interface ApprovedSubmitterEntry {
   userId: string;
